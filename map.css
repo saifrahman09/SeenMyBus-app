@@ -1,0 +1,31 @@
+#map-container { position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 1; overflow: hidden; touch-action: none; cursor: grab; background-color: var(--bg-gray); }
+#campus-map { width: 100%; height: 100%; display: block; transform-origin: 0 0; }
+
+#labels-macro { transition: opacity 0.3s ease; pointer-events: none; }
+#labels-micro { opacity: 0; transition: opacity 0.3s ease; pointer-events: none; }
+.is-zoomed-in #labels-micro { opacity: 1; }
+
+#bus-placeholders > g { opacity: 0; transition: opacity 0.3s ease; pointer-events: none; }
+
+/* Map Selection Colors */
+.spot-grey circle { fill: #E2E8F0 !important; stroke: #CBD5E1 !important; stroke-width: 0.7px !important; }
+.spot-green circle { fill: #bbf7d0 !important; stroke: #166534 !important; stroke-width: 0.7px !important; }
+.spot-yellow circle { fill: var(--bus-yellow) !important; stroke: var(--bus-stroke) !important; stroke-width: 0.7px !important; }
+.spot-deep-green circle { fill: #166534 !important; stroke: #14532d !important; stroke-width: 0.7px !important; }
+
+/* Unassigned Bus Spotted Style */
+.spot-unassigned { opacity: 1 !important; pointer-events: all !important; cursor: pointer; }
+.spot-unassigned circle { fill: #E2E8F0 !important; stroke: #94A3B8 !important; stroke-width: 0.7px !important; }
+
+.spot-text { font-family: 'Open Sans', sans-serif; font-size: 5.5px; font-weight: 700; pointer-events: none; transition: fill 0.2s; }
+.text-black { fill: #000 !important; }
+.text-white { fill: #fff !important; }
+.text-green { fill: #166534 !important; }
+.text-grey { fill: #64748B !important; }
+
+@keyframes radar-glow { 0% { filter: drop-shadow(0 0 0 rgba(252, 176, 65, 0.8)); } 70% { filter: drop-shadow(0 0 24px rgba(252, 176, 65, 0)); } 100% { filter: drop-shadow(0 0 0 rgba(252, 176, 65, 0)); } }
+.active-target { animation: radar-glow 1.5s infinite ease-out; pointer-events: all !important; z-index: 100; }
+.active-target circle { fill: var(--bus-yellow) !important; stroke: var(--bus-stroke) !important; }
+
+@keyframes pop-bounce { 0% { transform: scale(1); } 50% { transform: scale(1.4); } 100% { transform: scale(1); } }
+.pop-animate circle, .pop-animate text { transform-origin: center; transform-box: fill-box; animation: pop-bounce 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
