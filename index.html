@@ -15,12 +15,12 @@
         <div id="consent-banner" class="hidden">
             <div class="consent-content">
                 <h4>Welcome to SeenMyBus</h4>
-                <p>We use encrypted device IDs for anonymous authentication. No personal data is stored.</p>
+                <p>We use encrypted device IDs for anonymous authentication and contributor ranking. No personal data is stored.</p>
                 <button class="btn-primary" id="btn-accept-cookies" style="height: 40px; margin-top: 10px;">I Agree</button>
             </div>
         </div>
 
-        <!-- Notification Permission Toast (Witty & Friendly) -->
+        <!-- Notification Permission Toast (Triggers after 15 seconds) -->
         <div id="notif-banner" class="hidden">
             <div class="notif-content">
                 <h4>Stay Updated? 🚌</h4>
@@ -52,13 +52,21 @@
                 <h2>SeenMyBus</h2>
                 <button id="btn-close-panel" style="background:none;border:none;font-size:24px;cursor:pointer;">&times;</button>
             </div>
+
+            <!-- Contributor Stats Widget in Sidebar -->
+            <div class="contributor-widget">
+                <div class="contributor-title">Your Contributor Rank</div>
+                <div class="contributor-score" id="user-rank-display">Score: 0 pts (Level 1)</div>
+            </div>
+
             <div class="panel-links">
                 <a href="#">Help & FAQ</a>
                 <a href="#">Report a Bug</a>
                 <a href="#">Send Feedback</a>
                 <a href="#">Story Behind SeenMyBus</a>
             </div>
-            <!-- Side Panel Credit Above Divider -->
+
+            <!-- Developer Credit in Sidebar -->
             <div class="side-panel-credit">Developed by Saif Rahman (Batch '28)</div>
             <div class="panel-footer">
                 <a href="#">Terms & Conditions</a>
@@ -80,36 +88,43 @@
                     <p>No active buses found.</p>
                 </div>
             </div>
-            <div style="height: 120px;"></div> 
+            <div style="height: 100px;"></div> 
         </div>
 
-        <!-- Footers -->
+        <!-- Fixed Footer (Credit removed) -->
         <div id="fixed-footer" class="sheet-footer">
             <button class="btn-primary" id="btn-update-bus">Update Bus Details</button>
-            <div class="credit-text">Developed by Saif Rahman (Batch '28)</div>
         </div>
 
         <div id="selection-footer" class="sheet-footer hidden">
             <div id="step-3-summary" class="selection-summary"></div>
             <div style="display: flex; gap: 8px; width: 100%;">
                 <button class="btn-secondary" id="btn-prev-3" style="flex: 1;">Back</button>
-                <button class="btn-danger" id="btn-clear-bus" style="flex: 1.2;">Clear</button>
+                <button class="btn-danger" id="btn-clear-bus" style="flex: 1.2;">Unassign</button>
                 <button class="btn-primary" id="btn-submit-update" style="flex: 2;">Confirm</button>
             </div>
         </div>
 
-        <!-- Lightbox -->
+        <!-- Update Lightbox Modal -->
         <div id="modal-overlay" class="hidden">
             <div class="modal-box">
+                <!-- Step 1: Action Choice / Route -->
                 <div id="step-1" class="step-container">
-                    <h3>Step 1: Select Route</h3>
+                    <h3>Update Bus Location</h3>
+                    <p>Assign a route or unassign a bus that has left.</p>
                     <select id="route-select" class="custom-select"></select>
-                    <div class="modal-actions" style="flex-wrap: wrap;">
-                        <button class="btn-secondary" id="btn-skip-route" style="width: 100%; margin-bottom: 8px;">Skip (Unassigned Bus)</button>
-                        <button class="btn-secondary" id="btn-close-modal" style="flex: 1;">Cancel</button>
-                        <button class="btn-primary" id="btn-next-1" style="flex: 1;">Next</button>
+                    
+                    <div class="modal-actions-col">
+                        <button class="btn-primary" id="btn-next-1">Next: Assign Bus</button>
+                        <div style="display:flex; gap: 8px; width: 100%; margin-top: 8px;">
+                            <button class="btn-secondary" id="btn-skip-route" style="flex:1; font-size: 13px;">Spot Unassigned</button>
+                            <button class="btn-danger-outline" id="btn-start-unassign" style="flex:1; font-size: 13px;">Unassign / Bus Left</button>
+                        </div>
+                        <button class="btn-secondary" id="btn-close-modal" style="width: 100%; margin-top: 8px; height: 42px;">Cancel</button>
                     </div>
                 </div>
+
+                <!-- Step 2: Bus Number Picker -->
                 <div id="step-2" class="step-container hidden">
                     <h3>Step 2: Pick Bus Number</h3>
                     <div id="step-2-summary" class="step-summary-badge"></div>
@@ -117,6 +132,17 @@
                     <div class="modal-actions">
                         <button class="btn-secondary" id="btn-prev-2">Back</button>
                         <button class="btn-primary" id="btn-next-2">Next</button>
+                    </div>
+                </div>
+
+                <!-- Step Unassign Picker -->
+                <div id="step-unassign" class="step-container hidden">
+                    <h3 style="color: #dc2626;">Unassign Bus</h3>
+                    <p>Select the bus that has left or is no longer parked here:</p>
+                    <div id="unassign-bus-grid" class="bus-grid"></div>
+                    <div class="modal-actions">
+                        <button class="btn-secondary" id="btn-prev-unassign">Back</button>
+                        <button class="btn-danger" id="btn-confirm-unassign">Confirm Unassign (+5 pts)</button>
                     </div>
                 </div>
             </div>

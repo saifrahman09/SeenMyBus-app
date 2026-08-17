@@ -25,7 +25,8 @@ let activeBuses = [];
 let unassignedBuses = [];
 let appState = 'VIEW'; 
 let pendingUpdate = { route: null, busNo: null, spotId: null };
-let previousBusMap = {}; // Cache to detect consensus authority changes (Case 2)
+let busToUnassign = null;
+let previousBusMap = {};
 
 // Map Routes & Bus Registry
 const allRoutes = [
@@ -36,13 +37,17 @@ const allRoutes = [
 const allBuses = ["01", "02", "03", "04", "05", "10", "15", "19", "22", "25", "29", "30"];
 const allSpots = ["spot-01", "spot-02", "spot-03", "spot-04", "spot-05", "spot-06", "spot-07", "spot-08", "spot-09", "spot-10", "spot-11"];
 
-// --- Notification Engine ---
+// --- Notification Engine (Triggers popup after exactly 15 seconds) ---
 function initNotificationSystem() {
     const notifBanner = document.getElementById('notif-banner');
     const isAsked = localStorage.getItem('smb_notif_asked');
 
     if (!isAsked && "Notification" in window && Notification.permission === 'default') {
-        setTimeout(() => notifBanner.classList.remove('hidden'), 2500);
+        setTimeout(() => {
+            if (!localStorage.getItem('smb_notif_asked')) {
+                notifBanner.classList.remove('hidden');
+            }
+        }, 15000); // 15 Seconds Delay
     }
 
     document.getElementById('btn-allow-notif').onclick = () => {
@@ -67,7 +72,7 @@ function sendLocalNotification(title, body) {
     }
 }
 
-// Case 1: 15-minute unassigned reminder check
+// 15-Minute Unassigned Reminder Check
 function scheduleUnassignedReminder(busNo) {
     localStorage.setItem('smb_unassigned_remind_time', Date.now() + 15 * 60 * 1000);
     localStorage.setItem('smb_unassigned_bus_no', busNo);
@@ -83,33 +88,75 @@ setInterval(() => {
     }
 }, 30000);
 
-// --- Authentication & Device Fingerprint ---
+// --- Contributor Ranking & Device Token System ---
+function getDeviceToken() {
+    let token = localStorage.getItem('device_token');
+    if (!token) {
+        token = 'dev_' + Math.random().toString(36).substring(2, 11);
+        localStorage.setItem('device_token', token);
+    }
+    return token;
+}
+
+async function addContributionPoints(pointsToAdd = 10) {
+    const deviceToken = getDeviceToken();
+    try {
+        const userRef = ref(db, `userProfiles/${deviceToken}`);
+        const snap = await get(userRef);
+        const currentData = snap.val() || { score: 0, contributions: 0 };
+        
+        const newScore = (currentData.score || 0) + pointsToAdd;
+        const newContributions = (currentData.contributions || 0) + 1;
+
+        await update(userRef, {
+            score: newScore,
+            contributions: newContributions,
+            lastActive: Date.now()
+        });
+
+        updateRankDisplay(newScore);
+    } catch (e) {
+        console.error("Contributor score update error:", e);
+    }
+}
+
+function updateRankDisplay(score) {
+    const rankElem = document.getElementById('user-rank-display');
+    if (!rankElem) return;
+    let level = "Level 1 (Rookie)";
+    if (score >= 100) level = "Level 5 (Campus Legend 🌟)";
+    else if (score >= 50) level = "Level 4 (Spotter Pro)";
+    else if (score >= 25) level = "Level 3 (Regular Scout)";
+    else if (score >= 10) level = "Level 2 (Active Contributor)";
+    rankElem.textContent = `Score: ${score} pts • ${level}`;
+}
+
+async function loadInitialUserRank() {
+    const deviceToken = getDeviceToken();
+    try {
+        const snap = await get(ref(db, `userProfiles/${deviceToken}`));
+        const data = snap.val() || { score: 0 };
+        updateRankDisplay(data.score || 0);
+    } catch(e) {}
+}
+
 const consentBanner = document.getElementById('consent-banner');
 if (!localStorage.getItem('aju_consent')) consentBanner.classList.remove('hidden');
 
 document.getElementById('btn-accept-cookies').onclick = () => {
     localStorage.setItem('aju_consent', 'true');
     consentBanner.classList.add('hidden');
-    generateDeviceToken();
+    getDeviceToken();
     initNotificationSystem();
+    loadInitialUserRank();
 };
 
-function generateDeviceToken() {
-    if(!localStorage.getItem('device_token')) {
-        fetch('https://api.ipify.org?format=json').then(r=>r.json()).then(data => {
-            const encryptedIp = btoa(data.ip + 'SeenMyBus_Salt_' + Date.now()).substring(0, 24);
-            localStorage.setItem('device_token', encryptedIp);
-        }).catch(() => {
-            localStorage.setItem('device_token', 'anon_' + Math.random().toString(36).substr(2, 9));
-        });
-    }
-}
 if (localStorage.getItem('aju_consent')) {
-    generateDeviceToken();
     initNotificationSystem();
+    loadInitialUserRank();
 }
 
-// --- Navigation (Hamburger) ---
+// --- Navigation Hamburger & Sidebar ---
 const btnHam = document.getElementById('btn-hamburger');
 const sidePanel = document.getElementById('side-panel');
 const sideOverlay = document.getElementById('side-panel-overlay');
@@ -118,6 +165,7 @@ const closePanel = document.getElementById('btn-close-panel');
 const togglePanel = () => {
     sidePanel.classList.toggle('open');
     sideOverlay.classList.toggle('hidden');
+    if (sidePanel.classList.contains('open')) loadInitialUserRank();
 };
 btnHam.onclick = togglePanel;
 closePanel.onclick = togglePanel;
@@ -139,11 +187,9 @@ fetch('./ArkaJainUniversityBusMap.xml').then(res => res.text()).then(svgText => 
     }, 100);
 });
 
-// --- Realtime Firebase Sync Listeners ---
+// --- Realtime Firebase Sync ---
 onValue(ref(db, 'activeBuses'), (snapshot) => {
     const data = snapshot.val();
-    
-    // Auto-seed sample test if database is fresh
     if (!data) {
         const defaultBuses = {
             "spot-01": { busNos: ["22"], routeNum: "6", name: "Adityapur", users: 21, score: 98 },
@@ -154,20 +200,19 @@ onValue(ref(db, 'activeBuses'), (snapshot) => {
         return;
     }
 
-    // Parse records (supporting both legacy single busNo and dual bus arrays)
     activeBuses = Object.keys(data).map(spotId => {
         const item = data[spotId];
         const buses = item.busNos ? item.busNos : (item.busNo ? [item.busNo] : []);
         return { spotId, ...item, busNos: buses };
     });
 
-    // Case 2: Consensus Authority Reassignment Detection (3+ votes)
+    // Authority Reassignment Alert (3+ votes)
     activeBuses.forEach(ab => {
         ab.busNos.forEach(bNo => {
             if (previousBusMap[bNo] && previousBusMap[bNo].routeNum !== ab.routeNum && (ab.users >= 3)) {
                 sendLocalNotification(
                     "Bus Number Updated 🔄",
-                    `Notice: Route ${ab.routeNum} (${ab.name}) is now officially operating as Bus #${bNo}. Check map for live location!`
+                    `Notice: Route ${ab.routeNum} (${ab.name}) is now operating as Bus #${bNo}. Check map for live location!`
                 );
             }
             previousBusMap[bNo] = { routeNum: ab.routeNum, spotId: ab.spotId };
@@ -187,6 +232,13 @@ onValue(ref(db, 'unassignedBuses'), (snapshot) => {
     unassignedBuses = data ? Object.keys(data).map(spotId => ({ spotId, ...data[spotId] })) : [];
     if(appState === 'VIEW' && mapElement) renderMapSpots();
 });
+
+function getAssignedBusNumbers() {
+    const assigned = [];
+    activeBuses.forEach(ab => ab.busNos.forEach(b => assigned.push({ busNo: b, spotId: ab.spotId, routeName: ab.name })));
+    unassignedBuses.forEach(ub => assigned.push({ busNo: ub.busNo, spotId: ub.spotId, routeName: "Unassigned Spot" }));
+    return assigned;
+}
 
 function getUnassignedBusNumbers() {
     const assigned = new Set();
@@ -355,7 +407,7 @@ mapContainer.addEventListener('touchmove', e => {
 }, { passive: true });
 mapContainer.addEventListener('touchend', e => { if (e.touches.length === 0) isPanning = false; });
 
-// --- Bus List UI (With Multi-Badge Clustering) ---
+// --- Bus List UI ---
 const listContainer = id => document.getElementById(id);
 
 function renderList(buses, highlightBusNo = null) {
@@ -367,7 +419,6 @@ function renderList(buses, highlightBusNo = null) {
         const isHighlighted = highlightBusNo && bus.busNos.includes(highlightBusNo);
         div.className = `bus-item ${isHighlighted ? 'highlighted-bus' : ''}`;
         
-        // Multi-Bus Badges Side by Side
         const badgesHtml = bus.busNos.map(num => `<div class="bus-circle-badge">${num}</div>`).join('');
 
         div.innerHTML = `
@@ -440,7 +491,9 @@ function focusOnSpot(spotId) {
 // --- Multi-Step Update Flow ---
 const modal = document.getElementById('modal-overlay');
 const s1 = document.getElementById('step-1'), s2 = document.getElementById('step-2');
+const stepUnassign = document.getElementById('step-unassign');
 const grid = document.getElementById('bus-grid');
+const unassignGrid = document.getElementById('unassign-bus-grid');
 const fixedFooter = document.getElementById('fixed-footer');
 const selFooter = document.getElementById('selection-footer');
 const topBar = document.querySelector('.top-bar');
@@ -450,25 +503,101 @@ allRoutes.forEach(r => rSelect.innerHTML += `<option value="${r.num}">Route ${r.
 
 document.getElementById('btn-update-bus').onclick = () => {
     modal.classList.remove('hidden');
-    s1.classList.remove('hidden'); s2.classList.add('hidden');
+    s1.classList.remove('hidden'); s2.classList.add('hidden'); stepUnassign.classList.add('hidden');
     pendingUpdate = { route: null, busNo: null, spotId: null };
+    busToUnassign = null;
 };
 
 document.getElementById('btn-close-modal').onclick = () => modal.classList.add('hidden');
 
 document.getElementById('btn-skip-route').onclick = () => {
     pendingUpdate.route = null;
-    s1.classList.add('hidden'); s2.classList.remove('hidden');
+    s1.classList.add('hidden'); s2.classList.remove('hidden'); stepUnassign.classList.add('hidden');
     document.getElementById('step-2-summary').textContent = `Unassigned Buses (Select Bus)`;
     populateBusGrid(true);
 };
 
 document.getElementById('btn-next-1').onclick = () => {
     pendingUpdate.route = allRoutes.find(r => r.num === rSelect.value);
-    s1.classList.add('hidden'); s2.classList.remove('hidden');
+    s1.classList.add('hidden'); s2.classList.remove('hidden'); stepUnassign.classList.add('hidden');
     document.getElementById('step-2-summary').textContent = `Route ${pendingUpdate.route.num} - ${pendingUpdate.route.name}`;
     populateBusGrid(false); 
 };
+
+// --- Unassign Workflow ---
+document.getElementById('btn-start-unassign').onclick = () => {
+    s1.classList.add('hidden');
+    stepUnassign.classList.remove('hidden');
+    populateUnassignGrid();
+};
+
+document.getElementById('btn-prev-unassign').onclick = () => {
+    stepUnassign.classList.add('hidden');
+    s1.classList.remove('hidden');
+};
+
+function populateUnassignGrid() {
+    unassignGrid.innerHTML = '';
+    const activeList = getAssignedBusNumbers();
+
+    if (activeList.length === 0) {
+        unassignGrid.innerHTML = `<p style="grid-column: 1/-1; text-align: center; color: #727272; font-size: 13px;">No active buses currently parked to unassign.</p>`;
+        return;
+    }
+
+    activeList.forEach(item => {
+        const btn = document.createElement('div');
+        btn.className = 'grid-bus green';
+        btn.textContent = item.busNo;
+        btn.onclick = () => {
+            unassignGrid.querySelectorAll('.grid-bus').forEach(el => el.classList.remove('red-active'));
+            btn.classList.add('red-active');
+            busToUnassign = item.busNo;
+        };
+        unassignGrid.appendChild(btn);
+    });
+}
+
+document.getElementById('btn-confirm-unassign').onclick = async () => {
+    if (!busToUnassign) return alert("Please tap a bus to unassign.");
+    const btn = document.getElementById('btn-confirm-unassign');
+    btn.disabled = true;
+    btn.textContent = "Unassigning...";
+
+    modal.classList.add('hidden');
+
+    await executeUnassignBus(busToUnassign);
+    await addContributionPoints(5); // +5 Points for Unassigning accurately
+
+    btn.disabled = false;
+    btn.textContent = "Confirm Unassign (+5 pts)";
+};
+
+async function executeUnassignBus(busNumber) {
+    const updates = {};
+    const [snapActive, snapUn] = await Promise.all([
+        get(ref(db, 'activeBuses')),
+        get(ref(db, 'unassignedBuses'))
+    ]);
+
+    const valActive = snapActive.val() || {};
+    Object.keys(valActive).forEach(sId => {
+        let bList = valActive[sId].busNos || (valActive[sId].busNo ? [valActive[sId].busNo] : []);
+        if (bList.includes(busNumber)) {
+            bList = bList.filter(b => b !== busNumber);
+            if (bList.length === 0) updates[`activeBuses/${sId}`] = null;
+            else updates[`activeBuses/${sId}/busNos`] = bList;
+        }
+    });
+
+    const valUn = snapUn.val() || {};
+    Object.keys(valUn).forEach(sId => {
+        if (valUn[sId].busNo === busNumber) updates[`unassignedBuses/${sId}`] = null;
+    });
+
+    await update(ref(db), updates);
+    renderMapSpots();
+}
 
 function populateBusGrid(isUnassignedMode) {
     grid.innerHTML = '';
@@ -532,56 +661,35 @@ document.getElementById('btn-prev-3').onclick = () => {
     renderMapSpots(); 
 };
 
-// --- Fast & Conflict-Proof Clear ---
+// Selection Footer Unassign Button
 document.getElementById('btn-clear-bus').onclick = async () => {
     const busToClear = pendingUpdate.busNo;
     
-    // Immediate UI recovery
     appState = 'VIEW';
     selFooter.classList.add('hidden');
     fixedFooter.classList.remove('hidden');
     draggableSheet.style.transform = `translateY(${currentTranslate}px)`;
     topBar.style.transform = `translateY(0)`;
 
-    const updates = {};
-    const snapActive = await get(ref(db, 'activeBuses'));
-    const valActive = snapActive.val() || {};
-
-    Object.keys(valActive).forEach(sId => {
-        let bList = valActive[sId].busNos || (valActive[sId].busNo ? [valActive[sId].busNo] : []);
-        if (bList.includes(busToClear)) {
-            bList = bList.filter(b => b !== busToClear);
-            if (bList.length === 0) updates[`activeBuses/${sId}`] = null;
-            else updates[`activeBuses/${sId}/busNos`] = bList;
-        }
-    });
-
-    const snapUn = await get(ref(db, 'unassignedBuses'));
-    const valUn = snapUn.val() || {};
-    Object.keys(valUn).forEach(sId => {
-        if (valUn[sId].busNo === busToClear) updates[`unassignedBuses/${sId}`] = null;
-    });
-
-    await update(ref(db), updates);
-    renderMapSpots();
+    await executeUnassignBus(busToClear);
+    await addContributionPoints(5);
 };
 
-// --- Instant Conflict-Free Confirm Logic ---
+// Confirm Location Assignment Button
 document.getElementById('btn-submit-update').onclick = async () => {
     if(!pendingUpdate.spotId) return alert("Tap a spot on the map!");
     const confirmBtn = document.getElementById('btn-submit-update');
     confirmBtn.disabled = true;
     confirmBtn.textContent = "Saving...";
 
-    const deviceToken = localStorage.getItem('device_token') || 'anon';
+    const deviceToken = getDeviceToken();
     const targetSpot = pendingUpdate.spotId;
     const selectedBus = pendingUpdate.busNo;
     const targetRoute = pendingUpdate.route;
 
-    // Trigger 15-min unassigned notification reminder if applicable (Case 1)
     if (!targetRoute) scheduleUnassignedReminder(selectedBus);
 
-    // 1. INSTANT OPTIMISTIC UI CLOSE (No waiting / No double taps)
+    // Instant Optimistic UI Close
     appState = 'VIEW';
     selFooter.classList.add('hidden'); 
     fixedFooter.classList.remove('hidden');
@@ -589,7 +697,6 @@ document.getElementById('btn-submit-update').onclick = async () => {
     topBar.style.transform = `translateY(0)`;
 
     try {
-        // 2. ATOMIC DATABASE INTEGRITY PASS (Eliminate dual-route & duplicate conflicts)
         const [snapActive, snapUn] = await Promise.all([
             get(ref(db, 'activeBuses')),
             get(ref(db, 'unassignedBuses'))
@@ -599,7 +706,7 @@ document.getElementById('btn-submit-update').onclick = async () => {
         const unData = snapUn.val() || {};
         const updates = {};
 
-        // Strip selected bus from ANY other spot or route
+        // Strip from previous spot/route
         Object.keys(activeData).forEach(sId => {
             let bList = activeData[sId].busNos || (activeData[sId].busNo ? [activeData[sId].busNo] : []);
             if (bList.includes(selectedBus)) {
@@ -613,7 +720,7 @@ document.getElementById('btn-submit-update').onclick = async () => {
             if (unData[sId].busNo === selectedBus) updates[`unassignedBuses/${sId}`] = null;
         });
 
-        // Add to new location (Support 2 buses on 1 spot/route)
+        // Add to new spot
         if (targetRoute) {
             let existingBusesAtSpot = [];
             if (activeData[targetSpot] && activeData[targetSpot].routeNum === targetRoute.num) {
@@ -637,6 +744,7 @@ document.getElementById('btn-submit-update').onclick = async () => {
         }
 
         await update(ref(db), updates);
+        await addContributionPoints(10); // +10 points for assigning a bus location
     } catch (err) {
         console.error("Sync error:", err);
     } finally {
