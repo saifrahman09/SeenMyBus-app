@@ -75,9 +75,9 @@ body, html { margin: 0; padding: 0; font-family: 'Open Sans', system-ui, sans-se
 #search-input::placeholder { color: var(--text-sub); }
 
 .brand-logo {
-    height: 28px;
+    height: 50px;
     width: auto;
-    max-width: 160px;
+    max-width: 170px;
     object-fit: contain;
     display: block;
 }
