@@ -11,11 +11,28 @@
 <body>
     <div id="app-container">
         
+        <!-- First-Time Pinch to Zoom & Pan Visual Guide -->
+        <div id="pinch-guide" class="hidden">
+            <div class="guide-box">
+                <div class="pinch-anim-icon">
+                    <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <path d="m15 9-6 6"></path>
+                        <path d="M9 9h6v6"></path>
+                    </svg>
+                </div>
+                <div class="guide-text">
+                    <strong>Pinch to Zoom & Drag</strong>
+                    <span>Explore parking spots across campus</span>
+                </div>
+            </div>
+        </div>
+
         <!-- Privacy Consent -->
         <div id="consent-banner" class="hidden">
             <div class="consent-content">
                 <h4>Welcome to SeenMyBus</h4>
-                <p>We use encrypted device IDs for anonymous authentication and contributor ranking. No personal data is stored.</p>
+                <p>We use anonymous hardware fingerprints for permanent contributor ranking across cache clears. No personal data is stored.</p>
                 <button class="btn-primary" id="btn-accept-cookies" style="height: 40px; margin-top: 10px;">I Agree</button>
             </div>
         </div>
@@ -57,7 +74,7 @@
             <div class="contributor-widget">
                 <div class="contributor-title">Monthly Contributor Rank</div>
                 <div class="contributor-score" id="user-rank-display">Score: 0 pts • Level 1</div>
-                <div class="contributor-reset-hint">Scores reset on 5th of every month</div>
+                <div class="contributor-reset-hint">Stored permanently until 5th of every month</div>
             </div>
 
             <div class="panel-links">

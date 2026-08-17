@@ -13,6 +13,56 @@
 body, html { margin: 0; padding: 0; font-family: 'Open Sans', system-ui, sans-serif; background-color: var(--bg-gray); overflow: hidden; user-select: none; -webkit-user-select: none; }
 #app-container { display: flex; flex-direction: column; height: 100vh; height: 100dvh; position: relative; }
 
+/* Pinch to Zoom Floating Guide (Pointer-Events None to Avoid Touch Conflicts) */
+#pinch-guide {
+    position: absolute;
+    top: 25%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1500;
+    pointer-events: none;
+    transition: opacity 0.5s ease, transform 0.5s ease;
+}
+#pinch-guide.fade-out {
+    opacity: 0;
+    transform: translate(-50%, -60%) scale(0.9);
+}
+.guide-box {
+    background: rgba(30, 27, 46, 0.88);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: #ffffff;
+    padding: 12px 18px;
+    border-radius: 40px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+}
+.pinch-anim-icon {
+    color: var(--bus-yellow);
+    animation: pinch-pulse 1.8s infinite ease-in-out;
+    display: flex;
+    align-items: center;
+}
+@keyframes pinch-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.25) rotate(-5deg); }
+}
+.guide-text {
+    display: flex;
+    flex-direction: column;
+}
+.guide-text strong {
+    font-size: 13px;
+    letter-spacing: 0.2px;
+}
+.guide-text span {
+    font-size: 10.5px;
+    color: #cbd5e1;
+}
+
 /* Banners */
 #consent-banner, #notif-banner { position: absolute; bottom: 20px; left: 20px; right: 20px; background: white; padding: 18px 20px; border-radius: 20px; z-index: 5000; box-shadow: 0 10px 30px rgba(0,0,0,0.2); text-align: center; }
 #consent-banner h4, #notif-banner h4 { margin: 0 0 8px 0; color: var(--btn-grad-start); font-size: 16px; }

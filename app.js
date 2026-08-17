@@ -35,7 +35,122 @@ const allRoutes = [
 const allBuses = ["01", "02", "03", "04", "05", "10", "15", "19", "22", "25", "29", "30"];
 const allSpots = ["spot-01", "spot-02", "spot-03", "spot-04", "spot-05", "spot-06", "spot-07", "spot-08", "spot-09", "spot-10", "spot-11"];
 
-// --- 1. Notification Engine (15-Second Delay) ---
+// --- 1. Pinch-to-Zoom First Time Visual Guide ---
+function initPinchGuide() {
+    const guide = document.getElementById('pinch-guide');
+    if (!localStorage.getItem('smb_guide_shown')) {
+        guide.classList.remove('hidden');
+
+        const dismissGuide = () => {
+            if (!guide.classList.contains('fade-out')) {
+                guide.classList.add('fade-out');
+                localStorage.setItem('smb_guide_shown', 'true');
+                setTimeout(() => guide.classList.add('hidden'), 500);
+            }
+        };
+
+        // Auto-dismiss on first touch/drag or after 4.5 seconds
+        mapContainer.addEventListener('touchstart', dismissGuide, { once: true, passive: true });
+        mapContainer.addEventListener('mousedown', dismissGuide, { once: true });
+        setTimeout(dismissGuide, 4500);
+    }
+}
+
+// --- 2. Deterministic Device Fingerprinting (Survives Cache/Cookie Clears) ---
+function getDeterministicDeviceToken() {
+    // Generate a permanent hardware/screen/canvas hash for the device
+    try {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        ctx.textBaseline = 'top';
+        ctx.font = "14px 'Arial'";
+        ctx.fillStyle = '#f60';
+        ctx.fillRect(125, 1, 62, 20);
+        ctx.fillStyle = '#069';
+        ctx.fillText('SeenMyBus,AJU-2026', 2, 15);
+        ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
+        ctx.fillText('SeenMyBus,AJU-2026', 4, 17);
+        const canvasHash = canvas.toDataURL().slice(-40);
+
+        const rawHardwareString = [
+            navigator.userAgent,
+            screen.width + 'x' + screen.height + 'x' + screen.colorDepth,
+            Intl.DateTimeFormat().resolvedOptions().timeZone,
+            navigator.hardwareConcurrency || 4,
+            navigator.language || 'en',
+            canvasHash
+        ].join('###');
+
+        let hash = 0;
+        for (let i = 0; i < rawHardwareString.length; i++) {
+            const char = rawHardwareString.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash |= 0;
+        }
+        return 'dev_' + Math.abs(hash).toString(36);
+    } catch(e) {
+        return 'dev_fallback_' + screen.width + 'x' + screen.height;
+    }
+}
+
+// Monthly cycle key (Resets 5th of every month)
+function getCurrentCycleKey() {
+    const now = new Date();
+    let year = now.getFullYear();
+    let month = now.getMonth() + 1;
+    const day = now.getDate();
+
+    if (day < 5) {
+        month -= 1;
+        if (month === 0) { month = 12; year -= 1; }
+    }
+    return `cycle_${year}_${String(month).padStart(2, '0')}`;
+}
+
+async function addContributionPoints(points = 10) {
+    const deviceToken = getDeterministicDeviceToken();
+    const cycleKey = getCurrentCycleKey();
+    const userRef = ref(db, `userProfiles/${deviceToken}/${cycleKey}`);
+
+    try {
+        const snap = await get(userRef);
+        const currentData = snap.val() || { score: 0, actions: 0 };
+        const newScore = (currentData.score || 0) + points;
+
+        await update(userRef, {
+            score: newScore,
+            actions: (currentData.actions || 0) + 1,
+            lastActive: Date.now()
+        });
+
+        updateRankDisplay(newScore);
+    } catch (e) {
+        console.error("Contributor sync error:", e);
+    }
+}
+
+function updateRankDisplay(score) {
+    const rankElem = document.getElementById('user-rank-display');
+    if (!rankElem) return;
+    let level = "Level 1 (Rookie)";
+    if (score >= 100) level = "Level 5 (Campus Legend 🌟)";
+    else if (score >= 50) level = "Level 4 (Spotter Pro)";
+    else if (score >= 25) level = "Level 3 (Regular Scout)";
+    else if (score >= 10) level = "Level 2 (Active Contributor)";
+    rankElem.textContent = `Score: ${score} pts • ${level}`;
+}
+
+async function loadUserRank() {
+    const deviceToken = getDeterministicDeviceToken();
+    const cycleKey = getCurrentCycleKey();
+    try {
+        const snap = await get(ref(db, `userProfiles/${deviceToken}/${cycleKey}`));
+        const data = snap.val() || { score: 0 };
+        updateRankDisplay(data.score || 0);
+    } catch (e) {}
+}
+
+// --- 3. Notification Engine (15-Second Delay) ---
 function initNotificationSystem() {
     const notifBanner = document.getElementById('notif-banner');
     const isAsked = localStorage.getItem('smb_notif_asked');
@@ -70,7 +185,6 @@ function sendLocalNotification(title, body) {
     }
 }
 
-// 15-Minute Reminder
 function scheduleUnassignedReminder(busNo) {
     localStorage.setItem('smb_unassigned_remind_time', Date.now() + 15 * 60 * 1000);
     localStorage.setItem('smb_unassigned_bus_no', busNo);
@@ -86,76 +200,10 @@ setInterval(() => {
     }
 }, 30000);
 
-// --- 2. Monthly Contributor Engine (Resets 5th of Every Month) ---
-function getDeviceToken() {
-    let token = localStorage.getItem('device_token');
-    if (!token) {
-        token = 'dev_' + Math.random().toString(36).substring(2, 11);
-        localStorage.setItem('device_token', token);
-    }
-    return token;
-}
-
-function getCurrentCycleKey() {
-    const now = new Date();
-    let year = now.getFullYear();
-    let month = now.getMonth() + 1;
-    const day = now.getDate();
-
-    if (day < 5) {
-        month -= 1;
-        if (month === 0) { month = 12; year -= 1; }
-    }
-    return `cycle_${year}_${String(month).padStart(2, '0')}`;
-}
-
-async function addContributionPoints(points = 10) {
-    const deviceToken = getDeviceToken();
-    const cycleKey = getCurrentCycleKey();
-    const userRef = ref(db, `userProfiles/${deviceToken}/${cycleKey}`);
-
-    try {
-        const snap = await get(userRef);
-        const currentData = snap.val() || { score: 0, actions: 0 };
-        const newScore = (currentData.score || 0) + points;
-
-        await update(userRef, {
-            score: newScore,
-            actions: (currentData.actions || 0) + 1,
-            lastActive: Date.now()
-        });
-
-        updateRankDisplay(newScore);
-    } catch (e) {
-        console.error("Contributor sync error:", e);
-    }
-}
-
-function updateRankDisplay(score) {
-    const rankElem = document.getElementById('user-rank-display');
-    if (!rankElem) return;
-    let level = "Level 1 (Rookie)";
-    if (score >= 100) level = "Level 5 (Campus Legend 🌟)";
-    else if (score >= 50) level = "Level 4 (Spotter Pro)";
-    else if (score >= 25) level = "Level 3 (Regular Scout)";
-    else if (score >= 10) level = "Level 2 (Active Contributor)";
-    rankElem.textContent = `Score: ${score} pts • ${level}`;
-}
-
-async function loadUserRank() {
-    const deviceToken = getDeviceToken();
-    const cycleKey = getCurrentCycleKey();
-    try {
-        const snap = await get(ref(db, `userProfiles/${deviceToken}/${cycleKey}`));
-        const data = snap.val() || { score: 0 };
-        updateRankDisplay(data.score || 0);
-    } catch (e) {}
-}
-
-// --- 3. Shift Purge & Expiry ---
+// --- 4. Shift Purge & Expiry ---
 function isDataStale(updatedAt) {
     if (!updatedAt) return false;
-    return (Date.now() - updatedAt) > (90 * 60 * 1000); // 90 mins TTL
+    return (Date.now() - updatedAt) > (90 * 60 * 1000);
 }
 
 async function checkShiftPurge(data) {
@@ -188,15 +236,13 @@ if (!localStorage.getItem('aju_consent')) consentBanner.classList.remove('hidden
 document.getElementById('btn-accept-cookies').onclick = () => {
     localStorage.setItem('aju_consent', 'true');
     consentBanner.classList.add('hidden');
-    getDeviceToken();
     initNotificationSystem();
     loadUserRank();
 };
 
-if (localStorage.getItem('aju_consent')) {
-    initNotificationSystem();
-    loadUserRank();
-}
+initPinchGuide();
+initNotificationSystem();
+loadUserRank();
 
 const btnHam = document.getElementById('btn-hamburger');
 const sidePanel = document.getElementById('side-panel');
@@ -250,7 +296,6 @@ onValue(ref(db, 'activeBuses'), (snapshot) => {
         return { spotId, ...item, busNos: buses };
     });
 
-    // Consensus Alert
     activeBuses.forEach(ab => {
         ab.busNos.forEach(bNo => {
             if (previousBusMap[bNo] && previousBusMap[bNo].routeNum !== ab.routeNum && (ab.users >= 3)) {
@@ -297,7 +342,8 @@ function renderMapSpots() {
             if (busInfo && busInfo.busNos.length > 0) {
                 g.style.opacity = '1';
                 g.classList.add('spot-yellow');
-                addTextToSpot(g, busInfo.busNos.join(','), 'text-black');
+                const labelText = busInfo.busNos.join(',');
+                addTextToSpot(g, labelText, 'text-black');
                 g.style.pointerEvents = 'all';
                 g.style.cursor = 'pointer';
                 g.onclick = (e) => {
@@ -570,7 +616,7 @@ function switchTab(mode) {
 tabPark.onclick = () => switchTab('PARK');
 tabDepart.onclick = () => switchTab('DEPART');
 
-// --- 1-TAP DEPARTURE LOGIC ---
+// --- 1-Tap Departure Flow ---
 function renderSimpleDepartList() {
     departList.innerHTML = '';
     const activeList = [];
@@ -602,7 +648,6 @@ function renderSimpleDepartList() {
             const targetBus = item.busNo;
             modal.classList.add('hidden');
 
-            // Optimistic 0ms Local Update
             activeBuses.forEach(ab => { ab.busNos = ab.busNos.filter(b => b !== targetBus); });
             activeBuses = activeBuses.filter(ab => ab.busNos.length > 0);
             unassignedBuses = unassignedBuses.filter(ub => ub.busNo !== targetBus);
@@ -610,7 +655,6 @@ function renderSimpleDepartList() {
             renderMapSpots();
             renderList(activeBuses);
 
-            // Asynchronous Firebase Write & Contributor Reward
             executeFastUnassign(targetBus);
             addContributionPoints(5);
         };
@@ -647,7 +691,7 @@ async function executeFastUnassign(busNumber) {
     }
 }
 
-// --- PARK BUS WIZARD ---
+// --- Park Flow ---
 document.getElementById('btn-skip-route').onclick = () => {
     pendingUpdate.route = null;
     s1.classList.add('hidden'); s2.classList.remove('hidden');
@@ -727,14 +771,13 @@ document.getElementById('btn-submit-update').onclick = async () => {
     const confirmBtn = document.getElementById('btn-submit-update');
     confirmBtn.disabled = true;
 
-    const deviceToken = getDeviceToken();
+    const deviceToken = getDeterministicDeviceToken();
     const targetSpot = pendingUpdate.spotId;
     const selectedBus = pendingUpdate.busNo;
     const targetRoute = pendingUpdate.route;
 
     if (!targetRoute) scheduleUnassignedReminder(selectedBus);
 
-    // Instant optimistic close
     appState = 'VIEW';
     selFooter.classList.add('hidden'); 
     fixedFooter.classList.remove('hidden');
@@ -752,7 +795,6 @@ document.getElementById('btn-submit-update').onclick = async () => {
         const updates = {};
         const timestamp = Date.now();
 
-        // Strip previous occurrences
         Object.keys(activeData).forEach(sId => {
             let bList = activeData[sId].busNos || (activeData[sId].busNo ? [activeData[sId].busNo] : []);
             if (bList.includes(selectedBus)) {
