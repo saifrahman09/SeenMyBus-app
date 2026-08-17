@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <!-- Cache Busting Headers: Forces browser to pull fresh icons immediately -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Help & Guide | SeenMyBus</title>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-gray: #dfd5ec;
+            --text-black: #000000;
+            --text-sub: #64748b;
+            --bus-yellow: #FCB041;
+            --bus-stroke: #DB8810;
+            --btn-grad-start: #815FD7;
+            --btn-grad-end: #443271;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            min-height: 100%;
+            background-color: var(--bg-gray);
+            font-family: 'Open Sans', system-ui, -apple-system, sans-serif;
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+            -webkit-overflow-scrolling: touch !important;
+            touch-action: auto !important;
+            user-select: text !important;
+            -webkit-user-select: text !important;
+        }
+
+        /* 0ms Instant Load Theme-Purple Inline SVG Icons */
+        .ui-icon {
+            width: 20px;
+            height: 20px;
+            stroke: var(--btn-grad-start);
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            vertical-align: middle;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+
+        .ui-icon-inline {
+            width: 15px;
+            height: 15px;
+            vertical-align: -2px;
+            display: inline-block;
+        }
+
+        .ui-icon-fill {
+            fill: var(--btn-grad-start);
+            stroke: none;
+        }
+
+        .help-container {
+            max-width: 640px;
+            margin: 0 auto;
+            padding: 20px 16px 80px 16px;
+            min-height: 100vh;
+        }
+
+        .help-header {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 20px;
+            padding-top: max(10px, env(safe-area-inset-top));
+        }
+
+        .back-btn {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: #ffffff;
+            border: 1px solid rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #000000;
+            text-decoration: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            flex-shrink: 0;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .back-btn:active { transform: scale(0.92); }
+
+        .header-title-box h1 {
+            font-size: 20px;
+            font-weight: 700;
+            margin: 0;
+            color: var(--btn-grad-start);
+        }
+        .header-title-box span {
+            font-size: 11px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            font-weight: 600;
+        }
+
+        .guide-card {
+            background: #FFFFFF;
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.05);
+        }
+
+        .guide-card h2 {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-black);
+            margin: 0 0 14px 0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .section-desc {
+            font-size: 12.5px;
+            color: var(--text-sub);
+            margin: -6px 0 14px 0;
+            line-height: 1.45;
+        }
+
+        .troubleshoot-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .troubleshoot-card {
+            background: #FFF9E6;
+            border-left: 4px solid var(--bus-yellow);
+            border-radius: 12px;
+            padding: 12px 14px;
+        }
+
+        .troubleshoot-card.purple-alert {
+            background: #F4F0FF;
+            border-left-color: var(--btn-grad-start);
+        }
+
+        .troubleshoot-card strong {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: #78350F;
+            margin-bottom: 4px;
+        }
+
+        .troubleshoot-card.purple-alert strong { color: var(--btn-grad-end); }
+        .troubleshoot-card p { margin: 0; font-size: 12px; color: #92400E; line-height: 1.4; }
+        .troubleshoot-card.purple-alert p { color: #475569; }
+
+        .color-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 12px 0;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .color-item:last-child { border-bottom: none; padding-bottom: 0; }
+
+        .color-badge-preview {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 13.5px;
+            flex-shrink: 0;
+        }
+
+        .color-badge-yellow {
+            background-color: var(--bus-yellow);
+            border: 1.5px solid var(--bus-stroke);
+            color: #000;
+        }
+
+        .color-badge-grey {
+            background-color: #E2E8F0;
+            border: 1.5px dashed #94A3B8;
+            color: #64748B;
+        }
+
+        .color-badge-green {
+            background-color: #BBF7D0;
+            border: 1.5px solid #166534;
+            color: #166534;
+        }
+
+        .color-badge-dual { display: flex; gap: 4px; }
+        .color-badge-dual .color-badge-preview { width: 28px; height: 28px; font-size: 11px; }
+
+        .color-desc strong { display: block; font-size: 13.5px; color: var(--text-black); margin-bottom: 2px; }
+        .color-desc p { margin: 0; font-size: 12px; color: var(--text-sub); line-height: 1.35; }
+
+        .flow-container { display: flex; flex-direction: column; gap: 10px; }
+        .flow-step {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            background: #F8FAFC;
+            border: 1px solid #E2E8F0;
+            border-radius: 12px;
+            padding: 12px 14px;
+        }
+
+        .flow-step-num {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: var(--btn-grad-start);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+            flex-shrink: 0;
+        }
+
+        .flow-step-content strong { display: block; font-size: 13px; color: var(--text-black); margin-bottom: 2px; }
+        .flow-step-content p { margin: 0; font-size: 12px; color: var(--text-sub); line-height: 1.35; }
+
+        .rank-grid {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 8px 12px;
+            align-items: center;
+            margin-top: 10px;
+        }
+
+        .rank-pill {
+            background: #F4F0FF;
+            color: var(--btn-grad-start);
+            border: 1px solid rgba(129, 95, 215, 0.2);
+            font-size: 11.5px;
+            font-weight: 700;
+            padding: 6px 10px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .rank-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #1e293b;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .faq-item { border-bottom: 1px solid #F1F5F9; }
+        .faq-item:last-child { border-bottom: none; }
+
+        .faq-trigger {
+            width: 100%;
+            background: none;
+            border: none;
+            text-align: left;
+            padding: 16px 0;
+            font-size: 13.5px;
+            font-weight: 600;
+            color: var(--text-black);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            font-family: inherit;
+        }
+
+        .faq-plus { font-size: 18px; font-weight: 700; color: var(--btn-grad-start); transition: transform 0.25s ease; }
+        .faq-item.active .faq-plus { transform: rotate(45deg); }
+
+        .faq-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+
+        .faq-content p { margin: 0 0 16px 0; font-size: 12.5px; line-height: 1.5; color: var(--text-sub); }
+
+        .footer-credit {
+            text-align: center;
+            font-size: 11px;
+            font-weight: 600;
+            color: #94a3b8;
+            margin-top: 30px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="help-container">
+        <!-- Navigation Header -->
+        <div class="help-header">
+            <a href="./index.html" class="back-btn" aria-label="Return to Map">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="19" y1="12" x2="5" y2="12"></line>
+                    <polyline points="12 19 5 12 12 5"></polyline>
+                </svg>
+            </a>
+            <div class="header-title-box">
+                <h1>SeenMyBus Guide</h1>
+                <span>Comprehensive Visual Manual & FAQ</span>
+            </div>
+        </div>
+
+        <!-- 1. Troubleshooting & Quick Fixes -->
+        <div class="guide-card">
+            <h2>
+                <svg class="ui-icon" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                Troubleshooting & Quick Fixes
+            </h2>
+            <div class="troubleshoot-grid">
+                <div class="troubleshoot-card">
+                    <strong>
+                        <svg class="ui-icon ui-icon-inline" viewBox="0 0 24 24"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                        Map or Slots Not Loading?
+                    </strong>
+                    <p>Tap your browser's <strong>Refresh / Reload</strong> button to re-establish the live real-time WebSocket connection.</p>
+                </div>
+                <div class="troubleshoot-card purple-alert">
+                    <strong>
+                        <svg class="ui-icon ui-icon-inline" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                        App Freezing or Updates Not Showing?
+                    </strong>
+                    <p>Your browser may be holding older static scripts. Clear your <strong>Browser Cache / Site Data</strong> (or open in an Incognito tab) so your device pulls the latest version.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. Color Coding & Visual Legend -->
+        <div class="guide-card">
+            <h2>
+                <svg class="ui-icon" viewBox="0 0 24 24"><circle cx="13.5" cy="6.5" r=".5" fill="var(--btn-grad-start)"/><circle cx="17.5" cy="10.5" r=".5" fill="var(--btn-grad-start)"/><circle cx="8.5" cy="7.5" r=".5" fill="var(--btn-grad-start)"/><circle cx="6.5" cy="12.5" r=".5" fill="var(--btn-grad-start)"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>
+                Color Codes & Map Symbols
+            </h2>
+            <p class="section-desc">Understand map states at a glance before heading to the parking yard:</p>
+
+            <div class="color-item">
+                <div class="color-badge-preview color-badge-yellow">22</div>
+                <div class="color-desc">
+                    <strong>Confirmed Active Bus (Yellow)</strong>
+                    <p>Verified bus parked in this parking bay with an active destination route.</p>
+                </div>
+            </div>
+
+            <div class="color-item">
+                <div class="color-badge-preview color-badge-grey">04</div>
+                <div class="color-desc">
+                    <strong>Spotted / Unassigned Bus (Grey)</strong>
+                    <p>A bus has been spotted in this spot, but its route is not yet confirmed.</p>
+                </div>
+            </div>
+
+            <div class="color-item">
+                <div class="color-badge-preview color-badge-green">15</div>
+                <div class="color-desc">
+                    <strong>Occupied Slot (Green in Picker)</strong>
+                    <p>Indicates a slot or bus number that is already parked and assigned.</p>
+                </div>
+            </div>
+
+            <div class="color-item">
+                <div class="color-badge-dual">
+                    <div class="color-badge-preview color-badge-yellow">01</div>
+                    <div class="color-badge-preview color-badge-yellow">05</div>
+                </div>
+                <div class="color-desc">
+                    <strong>High-Capacity Route (Dual Badges)</strong>
+                    <p>Two buses are operating together from adjacent bays for high student volume.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. Step-by-Step Workflows -->
+        <div class="guide-card">
+            <h2>
+                <svg class="ui-icon" viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09zM12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/></svg>
+                How to Use SeenMyBus
+            </h2>
+            <p class="section-desc">Simple 3-second workflows to keep everyone updated:</p>
+
+            <div class="flow-container">
+                <div class="flow-step">
+                    <div class="flow-step-num">1</div>
+                    <div class="flow-step-content">
+                        <strong>Find Your Bus</strong>
+                        <p>Search your route name (e.g., <em>"Adityapur"</em>) or bus number in the top search bar, or tap directly on the map circle to focus on the parking bay.</p>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="flow-step-num">2</div>
+                    <div class="flow-step-content">
+                        <strong>Park / Assign an Arrived Bus (+10 pts)</strong>
+                        <p>Tap <strong>Update Bus Status</strong> &gt; <em>Bus Parked</em> &gt; Select Route &gt; Pick Bus Number &gt; Tap the bay on the map to confirm.</p>
+                    </div>
+                </div>
+
+                <div class="flow-step">
+                    <div class="flow-step-num">3</div>
+                    <div class="flow-step-content">
+                        <strong>Mark a Departed Bus (+5 pts)</strong>
+                        <p>When a bus leaves campus, tap <strong>Update Bus Status</strong> &gt; <em>Bus Departed</em> &gt; Tap <em>"Mark Departed"</em> next to that bus.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. Automatic Reset Logic & Contributor Ranks -->
+        <div class="guide-card">
+            <h2>
+                <svg class="ui-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                Reset Schedules & Contributor Ranks
+            </h2>
+            <p class="section-desc">How rankings, cloud cleanup, and shift purges operate:</p>
+
+            <div class="troubleshoot-card purple-alert" style="margin-bottom: 14px;">
+                <strong>Shift Purge Schedule: 1:15 PM • 4:15 PM • 7:00 PM</strong>
+                <p>To avoid old morning records cluttering afternoon departures, data is automatically purged after official shift cutoffs.</p>
+            </div>
+
+            <div class="rank-grid">
+                <div class="rank-pill">0 – 9 pts</div>
+                <div class="rank-label">Level 1 (Rookie)</div>
+
+                <div class="rank-pill">10 – 24 pts</div>
+                <div class="rank-label">Level 2 (Active Contributor)</div>
+
+                <div class="rank-pill">25 – 49 pts</div>
+                <div class="rank-label">Level 3 (Regular Scout)</div>
+
+                <div class="rank-pill">50 – 99 pts</div>
+                <div class="rank-label">Level 4 (Spotter Pro)</div>
+
+                <div class="rank-pill">100+ pts</div>
+                <div class="rank-label">
+                    Level 5 (Campus Legend
+                    <svg class="ui-icon ui-icon-inline ui-icon-fill" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>)
+                </div>
+            </div>
+
+            <p style="font-size: 11.5px; color: var(--text-sub); margin: 14px 0 0 0;">
+                <em>Note: Leaderboard points cycle and reset on the <strong>5th of every month</strong>. Your device hardware hash ensures points persist even after clearing browser cookies.</em>
+            </p>
+        </div>
+
+        <!-- 5. Frequently Asked Questions -->
+        <div class="guide-card">
+            <h2>
+                <svg class="ui-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></svg>
+                Frequently Asked Questions
+            </h2>
+
+            <div class="faq-item">
+                <button class="faq-trigger">
+                    <span>How does it track buses without GPS hardware?</span>
+                    <span class="faq-plus">+</span>
+                </button>
+                <div class="faq-content">
+                    <p>SeenMyBus uses crowdsourced consensus. When students arrive at the transport yard or board their bus, they confirm the parking slot number. When multiple independent spotters select the same slot, the system locks it in as verified campus consensus.</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-trigger">
+                    <span>What happens if someone submits a fake location?</span>
+                    <span class="faq-plus">+</span>
+                </button>
+                <div class="faq-content">
+                    <p>A single conflicting input cannot override a location confirmed by multiple students. The database prioritizes consensus reports and high-reputation contributors.</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-trigger">
+                    <span>What should I do if a bus number changes for my route?</span>
+                    <span class="faq-plus">+</span>
+                </button>
+                <div class="faq-content">
+                    <p>Select your usual route destination, pick the replacement bus number shown on the windshield board, and confirm its slot. Once 3 students submit this same update, the app notifies all subscribers.</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-trigger">
+                    <span>Why did the parking map clear all buses?</span>
+                    <span class="faq-plus">+</span>
+                </button>
+                <div class="faq-content">
+                    <p>To avoid morning buses cluttering afternoon departures, data is automatically purged after scheduled university departure hours (1:15 PM, 4:15 PM, 7:00 PM).</p>
+                </div>
+            </div>
+
+            <div class="faq-item">
+                <button class="faq-trigger">
+                    <span>Why did my contributor points drop back to 0?</span>
+                    <span class="faq-plus">+</span>
+                </button>
+                <div class="faq-content">
+                    <p>Contributor scores cycle every month and reset on the 5th to keep rankings active and fair for newcomers.</p>
+                </div>
+            </div>
+        </div>
+
+    <script>
+        document.querySelectorAll('.faq-trigger').forEach(trigger => {
+            trigger.addEventListener('click', () => {
+                const parent = trigger.parentElement;
+                const wasActive = parent.classList.contains('active');
+
+                document.querySelectorAll('.faq-item').forEach(item => {
+                    item.classList.remove('active');
+                    item.querySelector('.faq-content').style.maxHeight = null;
+                });
+
+                if (!wasActive) {
+                    parent.classList.add('active');
+                    const content = parent.querySelector('.faq-content');
+                    content.style.maxHeight = content.scrollHeight + "px";
+                }
+            });
+        });
+    </script>
+</body>
+</html>

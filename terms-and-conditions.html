@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Terms & Conditions | SeenMyBus</title>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./main.css">
+    <style>
+    html, body {
+        background-color: var(--bg-gray);
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        height: auto !important;
+        min-height: 100% !important;
+        -webkit-overflow-scrolling: touch !important;
+        user-select: auto !important;
+        -webkit-user-select: auto !important;
+    }
+
+    .legal-wrapper, .faq-wrapper {
+        max-width: 680px;
+        margin: 0 auto;
+        padding: 20px 20px 100px 20px;
+        box-sizing: border-box;
+    }
+
+    /* Top Header */
+    .legal-header, .faq-header {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 20px;
+        padding-top: max(10px, env(safe-area-inset-top));
+    }
+
+    .back-btn {
+        width: 42px;
+        height: 42px;
+        border-radius: 50%;
+        background: white;
+        border: 1px solid rgba(0,0,0,0.08);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--text-black);
+        text-decoration: none;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        flex-shrink: 0;
+    }
+
+    .legal-header h1, .faq-header h1 {
+        font-size: 20px;
+        font-weight: 700;
+        margin: 0;
+        color: var(--btn-grad-start);
+    }
+
+    .legal-timestamp {
+        font-size: 11px;
+        color: var(--text-sub);
+        margin-bottom: 16px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-weight: 600;
+    }
+
+    .legal-card, .guide-card {
+        background: white;
+        border-radius: 20px;
+        padding: 24px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+        line-height: 1.6;
+    }
+
+    .legal-card h2, .guide-card h2 {
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--text-black);
+        margin: 0 0 12px 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .legal-card p, .legal-card li, .guide-card p {
+        font-size: 13px;
+        color: #334155;
+        margin: 0 0 12px 0;
+    }
+
+    .legal-card ul {
+        padding-left: 20px;
+        margin: 0 0 12px 0;
+    }
+
+    .legal-card li {
+        margin-bottom: 6px;
+    }
+
+    .highlight-notice {
+        background: #FFF9E6;
+        border-left: 4px solid var(--bus-yellow);
+        padding: 12px 14px;
+        border-radius: 8px;
+        font-size: 12px;
+        color: #78350F;
+        margin-bottom: 16px;
+    }
+
+    .privacy-pill {
+        display: inline-block;
+        background: #dcfce7;
+        color: #15803d;
+        font-weight: 700;
+        font-size: 11px;
+        padding: 4px 10px;
+        border-radius: 20px;
+        margin-bottom: 12px;
+    }
+
+    .contact-box {
+        background: #F4F0FF;
+        border: 1px solid rgba(129, 95, 215, 0.2);
+        border-radius: 14px;
+        padding: 16px;
+        font-size: 13px;
+        color: #1e293b;
+    }
+
+    .contact-box a {
+        color: var(--btn-grad-start);
+        text-decoration: none;
+        font-weight: 600;
+    }
+
+    .legal-footer-credit, .faq-footer-credit {
+        text-align: center;
+        font-size: 11px;
+        font-weight: 600;
+        color: #94a3b8;
+        margin-top: 30px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+</style>
+</head>
+<body>
+    <div class="legal-wrapper">
+        <div class="legal-header">
+            <a href="./index.html" class="back-btn" aria-label="Back">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+            </a>
+            <h1>Terms & Conditions</h1>
+        </div>
+
+        <div class="legal-timestamp">Last Updated: August 17, 2026</div>
+
+        <div class="highlight-notice">
+            <strong>Community Notice:</strong> SeenMyBus is an independent, student-developed open utility built to assist the campus community. It is operated on a voluntary, non-commercial basis.
+        </div>
+
+        <div class="legal-card">
+            <h2>1. Acceptance of Terms</h2>
+            <p>By accessing, browsing, or utilizing the <strong>SeenMyBus</strong> web platform ("the Application"), you acknowledge that you have read, understood, and agreed to be legally bound by these Terms and Conditions. If you do not agree to these terms, please discontinue use of the Application immediately.</p>
+        </div>
+
+        <div class="legal-card">
+            <h2>2. Crowdsourced Operations & Disclaimer of Affiliation</h2>
+            <p>SeenMyBus operates entirely on real-time crowdsourced telemetry submitted by independent campus commuters.</p>
+            <ul>
+                <li><strong>No Official University Affiliation:</strong> SeenMyBus is an independent student initiative and is not officially operated, maintained, or endorsed by the official university transport desk, bus operators, or university administration.</li>
+                <li><strong>No GPS Guarantee:</strong> The platform does not install tracking hardware on vehicles. All slot positions represent community consensus and peer updates.</li>
+            </ul>
+        </div>
+
+        <div class="legal-card">
+            <h2>3. Limitation of Liability</h2>
+            <p>While algorithmic verification filters false entries, SeenMyBus and its developers provide this platform on an <strong>"AS IS"</strong> and <strong>"AS AVAILABLE"</strong> basis without warranties of any kind.</p>
+            <ul>
+                <li><strong>Departure & Schedule Changes:</strong> The developers shall not be held liable for missed departures, gate changes, route diversions, unexpected cancellations, or traffic delays.</li>
+                <li><strong>Personal Discretion:</strong> Commuters are strongly advised to arrive at the campus transport bay in advance of official departure cutoffs and verify physical route boards on vehicles.</li>
+            </ul>
+        </div>
+
+        <div class="legal-card">
+            <h2>4. User Code of Conduct & Fair Play</h2>
+            <p>As a community-driven tool, the integrity of SeenMyBus depends on authentic submissions. You agree not to:</p>
+            <ul>
+                <li>Deliberately submit fraudulent, intentionally displaced, or malicious parking bay assignments.</li>
+                <li>Employ automated bots, scrapers, or scripted requests that overburden server infrastructure.</li>
+                <li>Attempt to manipulate contributor rankings or consensus mechanisms through spoofed hardware identifiers.</li>
+            </ul>
+            <p>Any device identified engaging in systematic vandalism will be permanently blacklisted from consensus weighting.</p>
+        </div>
+
+        <div class="legal-card">
+            <h2>5. Intellectual Property & Copyright</h2>
+            <p>All software code, custom vector campus cartography (`ArkaJainUniversityBusMap.xml`), UI/UX layouts, styles, graphics, and architectural logic are the exclusive intellectual property of <strong>Saif Rahman</strong>.</p>
+            <p>Unauthorized cloning, commercial redistribution, decompilation, or mirroring of this platform without prior written consent is strictly prohibited.</p>
+        </div>
+
+        <div class="legal-card">
+            <h2>6. Automated Data Lifecycles & Purges</h2>
+            <p>To preserve system performance and prevent conflicting data between shift windows:</p>
+            <ul>
+                <li>Live parking slots automatically decay and expire after 90 minutes or post-shift departure triggers.</li>
+                <li>Contributor score balances are cycled and reset on the <strong>5th day of each calendar month</strong> to maintain fair leaderboard dynamics.</li>
+            </ul>
+        </div>
+
+        <div class="legal-card">
+            <h2>7. Dispute Resolution & Contact</h2>
+            <p>For copyright inquiries, reporting system anomalies, or addressing concerns, please reach out directly to the lead developer:</p>
+            <div class="contact-box">
+                <div><strong>Developer & Maintainer:</strong> Saif Rahman (Batch '28)</div>
+                <div style="margin-top: 6px;"><strong>Email:</strong> <a href="mailto:rahmansaif822@gmail.com">rahmansaif822@gmail.com</a></div>
+                <div style="margin-top: 4px;"><strong>Direct Phone / WhatsApp:</strong> <a href="tel:+917061236730">+91 7061236730</a></div>
+                <div style="margin-top: 4px;"><strong>Jurisdiction:</strong> Jamshedpur, Jharkhand, India</div>
+            </div>
+        </div>
+
+</body>
+</html>
