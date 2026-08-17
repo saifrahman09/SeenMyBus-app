@@ -14,7 +14,6 @@ const firebaseConfig = {
     measurementId: "G-7RF7CK39M9"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
@@ -25,10 +24,9 @@ let activeBuses = [];
 let unassignedBuses = [];
 let appState = 'VIEW'; 
 let pendingUpdate = { route: null, busNo: null, spotId: null };
-let busToUnassign = null;
 let previousBusMap = {};
 
-// Map Routes & Bus Registry
+// Routes & Slots Registry
 const allRoutes = [
     { num: "6", name: "Adityapur" }, { num: "7", name: "Mango chauk" },
     { num: "3", name: "Bistupur" }, { num: "9", name: "Dhatkidih" },
@@ -37,7 +35,7 @@ const allRoutes = [
 const allBuses = ["01", "02", "03", "04", "05", "10", "15", "19", "22", "25", "29", "30"];
 const allSpots = ["spot-01", "spot-02", "spot-03", "spot-04", "spot-05", "spot-06", "spot-07", "spot-08", "spot-09", "spot-10", "spot-11"];
 
-// --- Notification Engine (Triggers popup after exactly 15 seconds) ---
+// --- 1. Notification Engine (15-Second Delay) ---
 function initNotificationSystem() {
     const notifBanner = document.getElementById('notif-banner');
     const isAsked = localStorage.getItem('smb_notif_asked');
@@ -47,11 +45,11 @@ function initNotificationSystem() {
             if (!localStorage.getItem('smb_notif_asked')) {
                 notifBanner.classList.remove('hidden');
             }
-        }, 15000); // 15 Seconds Delay
+        }, 15000);
     }
 
     document.getElementById('btn-allow-notif').onclick = () => {
-        Notification.requestPermission().then(permission => {
+        Notification.requestPermission().then(() => {
             localStorage.setItem('smb_notif_asked', 'true');
             notifBanner.classList.add('hidden');
         });
@@ -72,7 +70,7 @@ function sendLocalNotification(title, body) {
     }
 }
 
-// 15-Minute Unassigned Reminder Check
+// 15-Minute Reminder
 function scheduleUnassignedReminder(busNo) {
     localStorage.setItem('smb_unassigned_remind_time', Date.now() + 15 * 60 * 1000);
     localStorage.setItem('smb_unassigned_bus_no', busNo);
@@ -84,11 +82,11 @@ setInterval(() => {
     if (remindTime && Date.now() >= parseInt(remindTime, 10)) {
         localStorage.removeItem('smb_unassigned_remind_time');
         localStorage.removeItem('smb_unassigned_bus_no');
-        sendLocalNotification("Spot Reminder 📍", `Did you notice which parking slot Bus ${busNo} moved to? Tap to update the campus!`);
+        sendLocalNotification("Spot Reminder 📍", `Did you notice which parking slot Bus ${busNo} moved to? Tap to update!`);
     }
 }, 30000);
 
-// --- Contributor Ranking & Device Token System ---
+// --- 2. Monthly Contributor Engine (Resets 5th of Every Month) ---
 function getDeviceToken() {
     let token = localStorage.getItem('device_token');
     if (!token) {
@@ -98,25 +96,38 @@ function getDeviceToken() {
     return token;
 }
 
-async function addContributionPoints(pointsToAdd = 10) {
+function getCurrentCycleKey() {
+    const now = new Date();
+    let year = now.getFullYear();
+    let month = now.getMonth() + 1;
+    const day = now.getDate();
+
+    if (day < 5) {
+        month -= 1;
+        if (month === 0) { month = 12; year -= 1; }
+    }
+    return `cycle_${year}_${String(month).padStart(2, '0')}`;
+}
+
+async function addContributionPoints(points = 10) {
     const deviceToken = getDeviceToken();
+    const cycleKey = getCurrentCycleKey();
+    const userRef = ref(db, `userProfiles/${deviceToken}/${cycleKey}`);
+
     try {
-        const userRef = ref(db, `userProfiles/${deviceToken}`);
         const snap = await get(userRef);
-        const currentData = snap.val() || { score: 0, contributions: 0 };
-        
-        const newScore = (currentData.score || 0) + pointsToAdd;
-        const newContributions = (currentData.contributions || 0) + 1;
+        const currentData = snap.val() || { score: 0, actions: 0 };
+        const newScore = (currentData.score || 0) + points;
 
         await update(userRef, {
             score: newScore,
-            contributions: newContributions,
+            actions: (currentData.actions || 0) + 1,
             lastActive: Date.now()
         });
 
         updateRankDisplay(newScore);
     } catch (e) {
-        console.error("Contributor score update error:", e);
+        console.error("Contributor sync error:", e);
     }
 }
 
@@ -131,15 +142,46 @@ function updateRankDisplay(score) {
     rankElem.textContent = `Score: ${score} pts • ${level}`;
 }
 
-async function loadInitialUserRank() {
+async function loadUserRank() {
     const deviceToken = getDeviceToken();
+    const cycleKey = getCurrentCycleKey();
     try {
-        const snap = await get(ref(db, `userProfiles/${deviceToken}`));
+        const snap = await get(ref(db, `userProfiles/${deviceToken}/${cycleKey}`));
         const data = snap.val() || { score: 0 };
         updateRankDisplay(data.score || 0);
-    } catch(e) {}
+    } catch (e) {}
 }
 
+// --- 3. Shift Purge & Expiry ---
+function isDataStale(updatedAt) {
+    if (!updatedAt) return false;
+    return (Date.now() - updatedAt) > (90 * 60 * 1000); // 90 mins TTL
+}
+
+async function checkShiftPurge(data) {
+    const now = new Date();
+    const currentMins = now.getHours() * 60 + now.getMinutes();
+    const cutoffs = [795, 975, 1140]; // 1:15 PM, 4:15 PM, 7:00 PM
+    const updates = {};
+    let needsPurge = false;
+
+    Object.keys(data).forEach(spotId => {
+        const item = data[spotId];
+        if (item && item.updatedAt) {
+            const itemDate = new Date(item.updatedAt);
+            const itemMins = itemDate.getHours() * 60 + itemDate.getMinutes();
+            const crossedCutoff = cutoffs.some(c => itemMins < c && currentMins >= c && (now.getDate() === itemDate.getDate()));
+            if (isDataStale(item.updatedAt) || crossedCutoff) {
+                updates[`activeBuses/${spotId}`] = null;
+                needsPurge = true;
+            }
+        }
+    });
+
+    if (needsPurge) await update(ref(db), updates);
+}
+
+// --- Consent & Sidebar Navigation ---
 const consentBanner = document.getElementById('consent-banner');
 if (!localStorage.getItem('aju_consent')) consentBanner.classList.remove('hidden');
 
@@ -148,15 +190,14 @@ document.getElementById('btn-accept-cookies').onclick = () => {
     consentBanner.classList.add('hidden');
     getDeviceToken();
     initNotificationSystem();
-    loadInitialUserRank();
+    loadUserRank();
 };
 
 if (localStorage.getItem('aju_consent')) {
     initNotificationSystem();
-    loadInitialUserRank();
+    loadUserRank();
 }
 
-// --- Navigation Hamburger & Sidebar ---
 const btnHam = document.getElementById('btn-hamburger');
 const sidePanel = document.getElementById('side-panel');
 const sideOverlay = document.getElementById('side-panel-overlay');
@@ -165,13 +206,13 @@ const closePanel = document.getElementById('btn-close-panel');
 const togglePanel = () => {
     sidePanel.classList.toggle('open');
     sideOverlay.classList.toggle('hidden');
-    if (sidePanel.classList.contains('open')) loadInitialUserRank();
+    if (sidePanel.classList.contains('open')) loadUserRank();
 };
 btnHam.onclick = togglePanel;
 closePanel.onclick = togglePanel;
 sideOverlay.onclick = togglePanel;
 
-// --- Map Fetch ---
+// Fetch Map
 fetch('./ArkaJainUniversityBusMap.xml').then(res => res.text()).then(svgText => {
     mapContainer.innerHTML = svgText;
     setTimeout(() => {
@@ -191,14 +232,17 @@ fetch('./ArkaJainUniversityBusMap.xml').then(res => res.text()).then(svgText => 
 onValue(ref(db, 'activeBuses'), (snapshot) => {
     const data = snapshot.val();
     if (!data) {
-        const defaultBuses = {
-            "spot-01": { busNos: ["22"], routeNum: "6", name: "Adityapur", users: 21, score: 98 },
-            "spot-02": { busNos: ["01"], routeNum: "7", name: "Mango chauk", users: 3, score: 80 },
-            "spot-03": { busNos: ["03"], routeNum: "3", name: "Bistupur", users: 1, score: 60 }
-        };
-        set(ref(db, 'activeBuses'), defaultBuses);
+        activeBuses = [];
+        if (appState === 'VIEW') {
+            if(mapElement) renderMapSpots();
+            renderList([]);
+            document.getElementById('skeleton-loader').classList.add('hidden');
+            document.getElementById('bus-list').classList.remove('hidden');
+        }
         return;
     }
+
+    checkShiftPurge(data);
 
     activeBuses = Object.keys(data).map(spotId => {
         const item = data[spotId];
@@ -206,20 +250,17 @@ onValue(ref(db, 'activeBuses'), (snapshot) => {
         return { spotId, ...item, busNos: buses };
     });
 
-    // Authority Reassignment Alert (3+ votes)
+    // Consensus Alert
     activeBuses.forEach(ab => {
         ab.busNos.forEach(bNo => {
             if (previousBusMap[bNo] && previousBusMap[bNo].routeNum !== ab.routeNum && (ab.users >= 3)) {
-                sendLocalNotification(
-                    "Bus Number Updated 🔄",
-                    `Notice: Route ${ab.routeNum} (${ab.name}) is now operating as Bus #${bNo}. Check map for live location!`
-                );
+                sendLocalNotification("Bus Updated 🔄", `Route ${ab.routeNum} (${ab.name}) is operating as Bus #${bNo}.`);
             }
             previousBusMap[bNo] = { routeNum: ab.routeNum, spotId: ab.spotId };
         });
     });
 
-    if(appState === 'VIEW') {
+    if (appState === 'VIEW') {
         if(mapElement) renderMapSpots();
         renderList(activeBuses);
         document.getElementById('skeleton-loader').classList.add('hidden');
@@ -232,13 +273,6 @@ onValue(ref(db, 'unassignedBuses'), (snapshot) => {
     unassignedBuses = data ? Object.keys(data).map(spotId => ({ spotId, ...data[spotId] })) : [];
     if(appState === 'VIEW' && mapElement) renderMapSpots();
 });
-
-function getAssignedBusNumbers() {
-    const assigned = [];
-    activeBuses.forEach(ab => ab.busNos.forEach(b => assigned.push({ busNo: b, spotId: ab.spotId, routeName: ab.name })));
-    unassignedBuses.forEach(ub => assigned.push({ busNo: ub.busNo, spotId: ub.spotId, routeName: "Unassigned Spot" }));
-    return assigned;
-}
 
 function getUnassignedBusNumbers() {
     const assigned = new Set();
@@ -263,8 +297,7 @@ function renderMapSpots() {
             if (busInfo && busInfo.busNos.length > 0) {
                 g.style.opacity = '1';
                 g.classList.add('spot-yellow');
-                const labelText = busInfo.busNos.join(',');
-                addTextToSpot(g, labelText, 'text-black');
+                addTextToSpot(g, busInfo.busNos.join(','), 'text-black');
                 g.style.pointerEvents = 'all';
                 g.style.cursor = 'pointer';
                 g.onclick = (e) => {
@@ -340,7 +373,7 @@ function addTextToSpot(g, textContent, colorClass) {
     g.appendChild(text);
 }
 
-// --- Bottom Sheet Drag Logic ---
+// --- Sheet Drag & Pan Engine ---
 const draggableSheet = document.getElementById('draggable-sheet');
 const dragHandle = document.getElementById('drag-handle-area');
 const contentWrapper = document.getElementById('sheet-content-wrapper');
@@ -367,7 +400,6 @@ dragHandle.addEventListener('touchend', () => {
     draggableSheet.style.transform = `translateY(${currentTranslate}px)`;
 });
 
-// --- Pan & Zoom Engine ---
 let scale = 1, pointX = 0, pointY = 0, startX = 0, startY = 0, isPanning = false, initialPinchDist = null, initialScale = 1;
 
 function applyBoundaries() {
@@ -414,6 +446,12 @@ function renderList(buses, highlightBusNo = null) {
     const container = listContainer('bus-list');
     container.innerHTML = '';
     
+    if (buses.length === 0) {
+        document.getElementById('empty-state').classList.remove('hidden');
+        return;
+    }
+    document.getElementById('empty-state').classList.add('hidden');
+
     buses.forEach(bus => {
         const div = document.createElement('div');
         const isHighlighted = highlightBusNo && bus.busNos.includes(highlightBusNo);
@@ -454,8 +492,6 @@ searchInput.addEventListener('input', (e) => {
         bus.routeNum.includes(query)
     );
     renderList(filtered);
-    if (filtered.length === 0) document.getElementById('empty-state').classList.remove('hidden');
-    else document.getElementById('empty-state').classList.add('hidden');
 });
 
 function focusOnSpot(spotId) {
@@ -488,12 +524,16 @@ function focusOnSpot(spotId) {
     setTimeout(() => { if(spotGroup) spotGroup.classList.remove('pop-animate'); }, 500); 
 }
 
-// --- Multi-Step Update Flow ---
+// --- Simplified Modal UI & Tab Switching ---
 const modal = document.getElementById('modal-overlay');
+const tabPark = document.getElementById('tab-park');
+const tabDepart = document.getElementById('tab-depart');
+const flowPark = document.getElementById('flow-park');
+const flowDepart = document.getElementById('flow-depart');
+
 const s1 = document.getElementById('step-1'), s2 = document.getElementById('step-2');
-const stepUnassign = document.getElementById('step-unassign');
 const grid = document.getElementById('bus-grid');
-const unassignGrid = document.getElementById('unassign-bus-grid');
+const departList = document.getElementById('depart-bus-list');
 const fixedFooter = document.getElementById('fixed-footer');
 const selFooter = document.getElementById('selection-footer');
 const topBar = document.querySelector('.top-bar');
@@ -501,110 +541,133 @@ const topBar = document.querySelector('.top-bar');
 const rSelect = document.getElementById('route-select');
 allRoutes.forEach(r => rSelect.innerHTML += `<option value="${r.num}">Route ${r.num} - ${r.name}</option>`);
 
+// Open Main Modal
 document.getElementById('btn-update-bus').onclick = () => {
     modal.classList.remove('hidden');
-    s1.classList.remove('hidden'); s2.classList.add('hidden'); stepUnassign.classList.add('hidden');
+    switchTab('PARK');
+    s1.classList.remove('hidden'); 
+    s2.classList.add('hidden');
     pendingUpdate = { route: null, busNo: null, spotId: null };
-    busToUnassign = null;
 };
 
 document.getElementById('btn-close-modal').onclick = () => modal.classList.add('hidden');
 
+function switchTab(mode) {
+    if (mode === 'PARK') {
+        tabPark.classList.add('active');
+        tabDepart.classList.remove('active');
+        flowPark.classList.remove('hidden');
+        flowDepart.classList.add('hidden');
+    } else {
+        tabDepart.classList.add('active');
+        tabPark.classList.remove('active');
+        flowDepart.classList.remove('hidden');
+        flowPark.classList.add('hidden');
+        renderSimpleDepartList();
+    }
+}
+
+tabPark.onclick = () => switchTab('PARK');
+tabDepart.onclick = () => switchTab('DEPART');
+
+// --- 1-TAP DEPARTURE LOGIC ---
+function renderSimpleDepartList() {
+    departList.innerHTML = '';
+    const activeList = [];
+
+    activeBuses.forEach(ab => {
+        ab.busNos.forEach(b => activeList.push({ busNo: b, label: `Route ${ab.routeNum} - ${ab.name}` }));
+    });
+    unassignedBuses.forEach(ub => {
+        activeList.push({ busNo: ub.busNo, label: "Unassigned Spot" });
+    });
+
+    if (activeList.length === 0) {
+        departList.innerHTML = `<p style="text-align: center; color: #727272; font-size: 13px; padding: 20px 0;">No active buses currently parked.</p>`;
+        return;
+    }
+
+    activeList.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'depart-card';
+        card.innerHTML = `
+            <div>
+                <div class="depart-left-title">Bus #${item.busNo}</div>
+                <div class="depart-left-sub">${item.label}</div>
+            </div>
+            <div class="depart-action-pill">Mark Departed 💨</div>
+        `;
+
+        card.onclick = () => {
+            const targetBus = item.busNo;
+            modal.classList.add('hidden');
+
+            // Optimistic 0ms Local Update
+            activeBuses.forEach(ab => { ab.busNos = ab.busNos.filter(b => b !== targetBus); });
+            activeBuses = activeBuses.filter(ab => ab.busNos.length > 0);
+            unassignedBuses = unassignedBuses.filter(ub => ub.busNo !== targetBus);
+            
+            renderMapSpots();
+            renderList(activeBuses);
+
+            // Asynchronous Firebase Write & Contributor Reward
+            executeFastUnassign(targetBus);
+            addContributionPoints(5);
+        };
+        departList.appendChild(card);
+    });
+}
+
+async function executeFastUnassign(busNumber) {
+    try {
+        const updates = {};
+        const [snapActive, snapUn] = await Promise.all([
+            get(ref(db, 'activeBuses')),
+            get(ref(db, 'unassignedBuses'))
+        ]);
+
+        const valActive = snapActive.val() || {};
+        Object.keys(valActive).forEach(sId => {
+            let bList = valActive[sId].busNos || (valActive[sId].busNo ? [valActive[sId].busNo] : []);
+            if (bList.includes(busNumber)) {
+                bList = bList.filter(b => b !== busNumber);
+                if (bList.length === 0) updates[`activeBuses/${sId}`] = null;
+                else updates[`activeBuses/${sId}/busNos`] = bList;
+            }
+        });
+
+        const valUn = snapUn.val() || {};
+        Object.keys(valUn).forEach(sId => {
+            if (valUn[sId].busNo === busNumber) updates[`unassignedBuses/${sId}`] = null;
+        });
+
+        await update(ref(db), updates);
+    } catch (e) {
+        console.error("Fast depart error:", e);
+    }
+}
+
+// --- PARK BUS WIZARD ---
 document.getElementById('btn-skip-route').onclick = () => {
     pendingUpdate.route = null;
-    s1.classList.add('hidden'); s2.classList.remove('hidden'); stepUnassign.classList.add('hidden');
-    document.getElementById('step-2-summary').textContent = `Unassigned Buses (Select Bus)`;
+    s1.classList.add('hidden'); s2.classList.remove('hidden');
+    document.getElementById('step-2-summary').textContent = `Unassigned Buses`;
     populateBusGrid(true);
 };
 
 document.getElementById('btn-next-1').onclick = () => {
     pendingUpdate.route = allRoutes.find(r => r.num === rSelect.value);
-    s1.classList.add('hidden'); s2.classList.remove('hidden'); stepUnassign.classList.add('hidden');
+    s1.classList.add('hidden'); s2.classList.remove('hidden');
     document.getElementById('step-2-summary').textContent = `Route ${pendingUpdate.route.num} - ${pendingUpdate.route.name}`;
     populateBusGrid(false); 
 };
-
-// --- Unassign Workflow ---
-document.getElementById('btn-start-unassign').onclick = () => {
-    s1.classList.add('hidden');
-    stepUnassign.classList.remove('hidden');
-    populateUnassignGrid();
-};
-
-document.getElementById('btn-prev-unassign').onclick = () => {
-    stepUnassign.classList.add('hidden');
-    s1.classList.remove('hidden');
-};
-
-function populateUnassignGrid() {
-    unassignGrid.innerHTML = '';
-    const activeList = getAssignedBusNumbers();
-
-    if (activeList.length === 0) {
-        unassignGrid.innerHTML = `<p style="grid-column: 1/-1; text-align: center; color: #727272; font-size: 13px;">No active buses currently parked to unassign.</p>`;
-        return;
-    }
-
-    activeList.forEach(item => {
-        const btn = document.createElement('div');
-        btn.className = 'grid-bus green';
-        btn.textContent = item.busNo;
-        btn.onclick = () => {
-            unassignGrid.querySelectorAll('.grid-bus').forEach(el => el.classList.remove('red-active'));
-            btn.classList.add('red-active');
-            busToUnassign = item.busNo;
-        };
-        unassignGrid.appendChild(btn);
-    });
-}
-
-document.getElementById('btn-confirm-unassign').onclick = async () => {
-    if (!busToUnassign) return alert("Please tap a bus to unassign.");
-    const btn = document.getElementById('btn-confirm-unassign');
-    btn.disabled = true;
-    btn.textContent = "Unassigning...";
-
-    modal.classList.add('hidden');
-
-    await executeUnassignBus(busToUnassign);
-    await addContributionPoints(5); // +5 Points for Unassigning accurately
-
-    btn.disabled = false;
-    btn.textContent = "Confirm Unassign (+5 pts)";
-};
-
-async function executeUnassignBus(busNumber) {
-    const updates = {};
-    const [snapActive, snapUn] = await Promise.all([
-        get(ref(db, 'activeBuses')),
-        get(ref(db, 'unassignedBuses'))
-    ]);
-
-    const valActive = snapActive.val() || {};
-    Object.keys(valActive).forEach(sId => {
-        let bList = valActive[sId].busNos || (valActive[sId].busNo ? [valActive[sId].busNo] : []);
-        if (bList.includes(busNumber)) {
-            bList = bList.filter(b => b !== busNumber);
-            if (bList.length === 0) updates[`activeBuses/${sId}`] = null;
-            else updates[`activeBuses/${sId}/busNos`] = bList;
-        }
-    });
-
-    const valUn = snapUn.val() || {};
-    Object.keys(valUn).forEach(sId => {
-        if (valUn[sId].busNo === busNumber) updates[`unassignedBuses/${sId}`] = null;
-    });
-
-    await update(ref(db), updates);
-    renderMapSpots();
-}
 
 function populateBusGrid(isUnassignedMode) {
     grid.innerHTML = '';
     const busesToShow = isUnassignedMode ? getUnassignedBusNumbers() : allBuses;
 
     if (busesToShow.length === 0) {
-        grid.innerHTML = `<p style="grid-column: 1/-1; text-align: center; color: #727272; font-size: 13px;">All buses are currently active.</p>`;
+        grid.innerHTML = `<p style="grid-column: 1/-1; text-align: center; color: #727272; font-size: 13px;">All buses are currently parked.</p>`;
         return;
     }
 
@@ -621,11 +684,8 @@ function populateBusGrid(isUnassignedMode) {
             btn.classList.add('yellow-active');
             pendingUpdate.busNo = bNo;
             
-            if (isSpottedUnassigned) {
-                pendingUpdate.spotId = isSpottedUnassigned.spotId;
-            } else if (isActive) {
-                pendingUpdate.spotId = isActive.spotId;
-            }
+            if (isSpottedUnassigned) pendingUpdate.spotId = isSpottedUnassigned.spotId;
+            else if (isActive) pendingUpdate.spotId = isActive.spotId;
         };
         grid.appendChild(btn);
     });
@@ -638,7 +698,7 @@ document.getElementById('btn-next-2').onclick = () => {
     appState = 'SELECTION';
     
     const summaryStr = pendingUpdate.route ? `(Route ${pendingUpdate.route.num})` : `(Unassigned Location)`;
-    document.getElementById('step-3-summary').innerHTML = `Select location for <span style="color:#815FD7;">Bus ${pendingUpdate.busNo}</span> ${summaryStr}`;
+    document.getElementById('step-3-summary').innerHTML = `Tap a slot on the map for <span style="color:#815FD7;">Bus ${pendingUpdate.busNo}</span> ${summaryStr}`;
 
     modal.classList.add('hidden');
     fixedFooter.classList.add('hidden');
@@ -661,26 +721,11 @@ document.getElementById('btn-prev-3').onclick = () => {
     renderMapSpots(); 
 };
 
-// Selection Footer Unassign Button
-document.getElementById('btn-clear-bus').onclick = async () => {
-    const busToClear = pendingUpdate.busNo;
-    
-    appState = 'VIEW';
-    selFooter.classList.add('hidden');
-    fixedFooter.classList.remove('hidden');
-    draggableSheet.style.transform = `translateY(${currentTranslate}px)`;
-    topBar.style.transform = `translateY(0)`;
-
-    await executeUnassignBus(busToClear);
-    await addContributionPoints(5);
-};
-
-// Confirm Location Assignment Button
+// Confirm Parking Slot
 document.getElementById('btn-submit-update').onclick = async () => {
     if(!pendingUpdate.spotId) return alert("Tap a spot on the map!");
     const confirmBtn = document.getElementById('btn-submit-update');
     confirmBtn.disabled = true;
-    confirmBtn.textContent = "Saving...";
 
     const deviceToken = getDeviceToken();
     const targetSpot = pendingUpdate.spotId;
@@ -689,7 +734,7 @@ document.getElementById('btn-submit-update').onclick = async () => {
 
     if (!targetRoute) scheduleUnassignedReminder(selectedBus);
 
-    // Instant Optimistic UI Close
+    // Instant optimistic close
     appState = 'VIEW';
     selFooter.classList.add('hidden'); 
     fixedFooter.classList.remove('hidden');
@@ -705,8 +750,9 @@ document.getElementById('btn-submit-update').onclick = async () => {
         const activeData = snapActive.val() || {};
         const unData = snapUn.val() || {};
         const updates = {};
+        const timestamp = Date.now();
 
-        // Strip from previous spot/route
+        // Strip previous occurrences
         Object.keys(activeData).forEach(sId => {
             let bList = activeData[sId].busNos || (activeData[sId].busNo ? [activeData[sId].busNo] : []);
             if (bList.includes(selectedBus)) {
@@ -720,7 +766,6 @@ document.getElementById('btn-submit-update').onclick = async () => {
             if (unData[sId].busNo === selectedBus) updates[`unassignedBuses/${sId}`] = null;
         });
 
-        // Add to new spot
         if (targetRoute) {
             let existingBusesAtSpot = [];
             if (activeData[targetSpot] && activeData[targetSpot].routeNum === targetRoute.num) {
@@ -733,22 +778,22 @@ document.getElementById('btn-submit-update').onclick = async () => {
                 routeNum: targetRoute.num,
                 name: targetRoute.name,
                 users: (activeData[targetSpot]?.users || 0) + 1,
-                score: 100,
+                updatedAt: timestamp,
                 updatedBy: deviceToken
             };
         } else {
             updates[`unassignedBuses/${targetSpot}`] = {
                 busNo: selectedBus,
+                updatedAt: timestamp,
                 updatedBy: deviceToken
             };
         }
 
         await update(ref(db), updates);
-        await addContributionPoints(10); // +10 points for assigning a bus location
+        await addContributionPoints(10);
     } catch (err) {
         console.error("Sync error:", err);
     } finally {
         confirmBtn.disabled = false;
-        confirmBtn.textContent = "Confirm";
     }
 };
