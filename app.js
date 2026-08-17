@@ -1,4 +1,4 @@
-// Import Firebase modular SDKs directly from the CDN
+// Import Firebase modular SDKs via CDN
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
 import { getDatabase, ref, onValue, set, update, get } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-database.js";
 
@@ -6,8 +6,7 @@ import { getDatabase, ref, onValue, set, update, get } from "https://www.gstatic
 const firebaseConfig = {
     apiKey: "AIzaSyCXejNb5wgmZ6KJ3Q4r4BhBqw9KPn7iX5I",
     authDomain: "seenmybus.firebaseapp.com",
-    // NOTE: This is the standard Realtime Database URL structure. Ensure it is correct for your region!
-    databaseURL: "https://seenmybus-default-rtdb.asia-southeast1.firebasedatabase.app", 
+    databaseURL: "https://seenmybus-default-rtdb.asia-southeast1.firebasedatabase.app",
     projectId: "seenmybus",
     storageBucket: "seenmybus.firebasestorage.app",
     messagingSenderId: "352466758419",
@@ -19,15 +18,16 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-// --- State Variables ---
+// State Variables
 const mapContainer = document.getElementById('map-container');
 let mapElement = null;
 let activeBuses = [];
 let unassignedBuses = [];
 let appState = 'VIEW'; 
 let pendingUpdate = { route: null, busNo: null, spotId: null };
+let previousBusMap = {}; // Cache to detect consensus authority changes (Case 2)
 
-// --- Map Data Models ---
+// Map Routes & Bus Registry
 const allRoutes = [
     { num: "6", name: "Adityapur" }, { num: "7", name: "Mango chauk" },
     { num: "3", name: "Bistupur" }, { num: "9", name: "Dhatkidih" },
@@ -36,7 +36,54 @@ const allRoutes = [
 const allBuses = ["01", "02", "03", "04", "05", "10", "15", "19", "22", "25", "29", "30"];
 const allSpots = ["spot-01", "spot-02", "spot-03", "spot-04", "spot-05", "spot-06", "spot-07", "spot-08", "spot-09", "spot-10", "spot-11"];
 
-// --- Authentication & Consent ---
+// --- Notification Engine ---
+function initNotificationSystem() {
+    const notifBanner = document.getElementById('notif-banner');
+    const isAsked = localStorage.getItem('smb_notif_asked');
+
+    if (!isAsked && "Notification" in window && Notification.permission === 'default') {
+        setTimeout(() => notifBanner.classList.remove('hidden'), 2500);
+    }
+
+    document.getElementById('btn-allow-notif').onclick = () => {
+        Notification.requestPermission().then(permission => {
+            localStorage.setItem('smb_notif_asked', 'true');
+            notifBanner.classList.add('hidden');
+        });
+    };
+
+    document.getElementById('btn-dismiss-notif').onclick = () => {
+        localStorage.setItem('smb_notif_asked', 'true');
+        notifBanner.classList.add('hidden');
+    };
+}
+
+function sendLocalNotification(title, body) {
+    if ("Notification" in window && Notification.permission === "granted") {
+        new Notification(title, {
+            body: body,
+            icon: "https://raw.githubusercontent.com/saifrahman09/SeenMyBus-app/main/icon.png"
+        });
+    }
+}
+
+// Case 1: 15-minute unassigned reminder check
+function scheduleUnassignedReminder(busNo) {
+    localStorage.setItem('smb_unassigned_remind_time', Date.now() + 15 * 60 * 1000);
+    localStorage.setItem('smb_unassigned_bus_no', busNo);
+}
+
+setInterval(() => {
+    const remindTime = localStorage.getItem('smb_unassigned_remind_time');
+    const busNo = localStorage.getItem('smb_unassigned_bus_no');
+    if (remindTime && Date.now() >= parseInt(remindTime, 10)) {
+        localStorage.removeItem('smb_unassigned_remind_time');
+        localStorage.removeItem('smb_unassigned_bus_no');
+        sendLocalNotification("Spot Reminder 📍", `Did you notice which parking slot Bus ${busNo} moved to? Tap to update the campus!`);
+    }
+}, 30000);
+
+// --- Authentication & Device Fingerprint ---
 const consentBanner = document.getElementById('consent-banner');
 if (!localStorage.getItem('aju_consent')) consentBanner.classList.remove('hidden');
 
@@ -44,6 +91,7 @@ document.getElementById('btn-accept-cookies').onclick = () => {
     localStorage.setItem('aju_consent', 'true');
     consentBanner.classList.add('hidden');
     generateDeviceToken();
+    initNotificationSystem();
 };
 
 function generateDeviceToken() {
@@ -56,7 +104,10 @@ function generateDeviceToken() {
         });
     }
 }
-if (localStorage.getItem('aju_consent')) generateDeviceToken();
+if (localStorage.getItem('aju_consent')) {
+    generateDeviceToken();
+    initNotificationSystem();
+}
 
 // --- Navigation (Hamburger) ---
 const btnHam = document.getElementById('btn-hamburger');
@@ -83,17 +134,46 @@ fetch('./ArkaJainUniversityBusMap.xml').then(res => res.text()).then(svgText => 
             mapElement.style.shapeRendering = 'geometricPrecision';
             const rootGroup = document.getElementById('campus-map-root');
             if(rootGroup) rootGroup.removeAttribute('clip-path');
-            
-            // Re-render UI now that Map exists
             if (activeBuses.length > 0) renderMapSpots();
         }
     }, 100);
 });
 
-// --- REAL-TIME FIREBASE SYNC LISTENERS ---
+// --- Realtime Firebase Sync Listeners ---
 onValue(ref(db, 'activeBuses'), (snapshot) => {
     const data = snapshot.val();
-    activeBuses = data ? Object.keys(data).map(spotId => ({ spotId, ...data[spotId] })) : [];
+    
+    // Auto-seed sample test if database is fresh
+    if (!data) {
+        const defaultBuses = {
+            "spot-01": { busNos: ["22"], routeNum: "6", name: "Adityapur", users: 21, score: 98 },
+            "spot-02": { busNos: ["01"], routeNum: "7", name: "Mango chauk", users: 3, score: 80 },
+            "spot-03": { busNos: ["03"], routeNum: "3", name: "Bistupur", users: 1, score: 60 }
+        };
+        set(ref(db, 'activeBuses'), defaultBuses);
+        return;
+    }
+
+    // Parse records (supporting both legacy single busNo and dual bus arrays)
+    activeBuses = Object.keys(data).map(spotId => {
+        const item = data[spotId];
+        const buses = item.busNos ? item.busNos : (item.busNo ? [item.busNo] : []);
+        return { spotId, ...item, busNos: buses };
+    });
+
+    // Case 2: Consensus Authority Reassignment Detection (3+ votes)
+    activeBuses.forEach(ab => {
+        ab.busNos.forEach(bNo => {
+            if (previousBusMap[bNo] && previousBusMap[bNo].routeNum !== ab.routeNum && (ab.users >= 3)) {
+                sendLocalNotification(
+                    "Bus Number Updated 🔄",
+                    `Notice: Route ${ab.routeNum} (${ab.name}) is now officially operating as Bus #${bNo}. Check map for live location!`
+                );
+            }
+            previousBusMap[bNo] = { routeNum: ab.routeNum, spotId: ab.spotId };
+        });
+    });
+
     if(appState === 'VIEW') {
         if(mapElement) renderMapSpots();
         renderList(activeBuses);
@@ -109,8 +189,9 @@ onValue(ref(db, 'unassignedBuses'), (snapshot) => {
 });
 
 function getUnassignedBusNumbers() {
-    const activeBusNumbers = new Set(activeBuses.map(b => b.busNo));
-    return allBuses.filter(bNo => !activeBusNumbers.has(bNo));
+    const assigned = new Set();
+    activeBuses.forEach(ab => ab.busNos.forEach(b => assigned.add(b)));
+    return allBuses.filter(bNo => !assigned.has(bNo));
 }
 
 // --- Map Render Logic ---
@@ -127,15 +208,16 @@ function renderMapSpots() {
         const unassignedInfo = unassignedBuses.find(b => b.spotId === spotId);
         
         if (appState === 'VIEW') {
-            if (busInfo) {
+            if (busInfo && busInfo.busNos.length > 0) {
                 g.style.opacity = '1';
                 g.classList.add('spot-yellow');
-                addTextToSpot(g, busInfo.busNo, 'text-black');
+                const labelText = busInfo.busNos.join(',');
+                addTextToSpot(g, labelText, 'text-black');
                 g.style.pointerEvents = 'all';
                 g.style.cursor = 'pointer';
                 g.onclick = (e) => {
                     e.stopPropagation();
-                    highlightBusInList(busInfo.busNo);
+                    highlightBusInList(busInfo.busNos[0]);
                     focusOnSpot(spotId);
                 };
             } else if (unassignedInfo) {
@@ -155,9 +237,9 @@ function renderMapSpots() {
             g.style.opacity = '1';
             g.style.pointerEvents = 'all';
 
-            if (busInfo) {
+            if (busInfo && busInfo.busNos.length > 0) {
                 g.classList.add('spot-green');
-                addTextToSpot(g, busInfo.busNo, 'text-green');
+                addTextToSpot(g, busInfo.busNos.join(','), 'text-green');
             } else {
                 g.classList.add('spot-grey');
             }
@@ -200,7 +282,9 @@ function addTextToSpot(g, textContent, colorClass) {
     const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
     text.setAttribute('x', cx); text.setAttribute('y', cy);
     text.setAttribute('text-anchor', 'middle'); text.setAttribute('dy', '0.35em'); 
-    text.setAttribute('class', `spot-text ${colorClass}`); text.textContent = textContent;
+    text.setAttribute('class', `spot-text ${colorClass}`);
+    if (textContent.length > 3) text.style.fontSize = '3.8px';
+    text.textContent = textContent;
     g.appendChild(text);
 }
 
@@ -271,22 +355,30 @@ mapContainer.addEventListener('touchmove', e => {
 }, { passive: true });
 mapContainer.addEventListener('touchend', e => { if (e.touches.length === 0) isPanning = false; });
 
-// --- Main List UI ---
+// --- Bus List UI (With Multi-Badge Clustering) ---
 const listContainer = id => document.getElementById(id);
 
 function renderList(buses, highlightBusNo = null) {
     const container = listContainer('bus-list');
     container.innerHTML = '';
+    
     buses.forEach(bus => {
         const div = document.createElement('div');
-        div.className = `bus-item ${highlightBusNo === bus.busNo ? 'highlighted-bus' : ''}`;
+        const isHighlighted = highlightBusNo && bus.busNos.includes(highlightBusNo);
+        div.className = `bus-item ${isHighlighted ? 'highlighted-bus' : ''}`;
+        
+        // Multi-Bus Badges Side by Side
+        const badgesHtml = bus.busNos.map(num => `<div class="bus-circle-badge">${num}</div>`).join('');
+
         div.innerHTML = `
             <div class="bus-info-left">
                 <span class="route-badge">Route ${bus.routeNum}</span>
                 <span class="route-name">${bus.name}</span>
-                <span class="verified-text">Suggested by ${bus.users} users</span>
+                <span class="verified-text">Suggested by ${bus.users || 1} users</span>
             </div>
-            <div class="bus-circle-badge">${bus.busNo}</div>
+            <div class="bus-badge-group">
+                ${badgesHtml}
+            </div>
         `;
         div.addEventListener('click', () => focusOnSpot(bus.spotId));
         container.appendChild(div);
@@ -294,7 +386,7 @@ function renderList(buses, highlightBusNo = null) {
 }
 
 function highlightBusInList(busNo) {
-    activeBuses.sort((a, b) => a.busNo === busNo ? -1 : b.busNo === busNo ? 1 : 0);
+    activeBuses.sort((a, b) => a.busNos.includes(busNo) ? -1 : b.busNos.includes(busNo) ? 1 : 0);
     currentTranslate = 0;
     draggableSheet.style.transition = 'transform 0.35s';
     draggableSheet.style.transform = `translateY(0)`;
@@ -305,7 +397,11 @@ function highlightBusInList(busNo) {
 const searchInput = document.getElementById('search-input');
 searchInput.addEventListener('input', (e) => {
     const query = e.target.value.toLowerCase().trim();
-    const filtered = activeBuses.filter(bus => bus.busNo.includes(query) || bus.name.toLowerCase().includes(query) || bus.routeNum.includes(query));
+    const filtered = activeBuses.filter(bus => 
+        bus.busNos.some(b => b.includes(query)) || 
+        bus.name.toLowerCase().includes(query) || 
+        bus.routeNum.includes(query)
+    );
     renderList(filtered);
     if (filtered.length === 0) document.getElementById('empty-state').classList.remove('hidden');
     else document.getElementById('empty-state').classList.add('hidden');
@@ -379,12 +475,12 @@ function populateBusGrid(isUnassignedMode) {
     const busesToShow = isUnassignedMode ? getUnassignedBusNumbers() : allBuses;
 
     if (busesToShow.length === 0) {
-        grid.innerHTML = `<p style="grid-column: 1/-1; text-align: center; color: #727272; font-size: 13px;">All buses are currently assigned.</p>`;
+        grid.innerHTML = `<p style="grid-column: 1/-1; text-align: center; color: #727272; font-size: 13px;">All buses are currently active.</p>`;
         return;
     }
 
     busesToShow.forEach(bNo => {
-        const isActive = activeBuses.find(ab => ab.busNo === bNo);
+        const isActive = activeBuses.find(ab => ab.busNos.includes(bNo));
         const isSpottedUnassigned = unassignedBuses.find(ub => ub.busNo === bNo);
         
         const btn = document.createElement('div');
@@ -436,63 +532,115 @@ document.getElementById('btn-prev-3').onclick = () => {
     renderMapSpots(); 
 };
 
-// --- Modular Firebase Sync Calls ---
-document.getElementById('btn-clear-bus').onclick = () => {
-    get(ref(db, 'activeBuses')).then(snapshot => {
-        const val = snapshot.val();
-        if(val) {
-            Object.keys(val).forEach(sId => {
-                if(val[sId].busNo === pendingUpdate.busNo) set(ref(db, `activeBuses/${sId}`), null);
-            });
-        }
-    });
-    get(ref(db, 'unassignedBuses')).then(snapshot => {
-        const val = snapshot.val();
-        if(val) {
-            Object.keys(val).forEach(sId => {
-                if(val[sId].busNo === pendingUpdate.busNo) set(ref(db, `unassignedBuses/${sId}`), null);
-            });
+// --- Fast & Conflict-Proof Clear ---
+document.getElementById('btn-clear-bus').onclick = async () => {
+    const busToClear = pendingUpdate.busNo;
+    
+    // Immediate UI recovery
+    appState = 'VIEW';
+    selFooter.classList.add('hidden');
+    fixedFooter.classList.remove('hidden');
+    draggableSheet.style.transform = `translateY(${currentTranslate}px)`;
+    topBar.style.transform = `translateY(0)`;
+
+    const updates = {};
+    const snapActive = await get(ref(db, 'activeBuses'));
+    const valActive = snapActive.val() || {};
+
+    Object.keys(valActive).forEach(sId => {
+        let bList = valActive[sId].busNos || (valActive[sId].busNo ? [valActive[sId].busNo] : []);
+        if (bList.includes(busToClear)) {
+            bList = bList.filter(b => b !== busToClear);
+            if (bList.length === 0) updates[`activeBuses/${sId}`] = null;
+            else updates[`activeBuses/${sId}/busNos`] = bList;
         }
     });
 
-    appState = 'VIEW';
-    selFooter.classList.add('hidden'); fixedFooter.classList.remove('hidden');
-    draggableSheet.style.transform = `translateY(${currentTranslate}px)`; topBar.style.transform = `translateY(0)`;
+    const snapUn = await get(ref(db, 'unassignedBuses'));
+    const valUn = snapUn.val() || {};
+    Object.keys(valUn).forEach(sId => {
+        if (valUn[sId].busNo === busToClear) updates[`unassignedBuses/${sId}`] = null;
+    });
+
+    await update(ref(db), updates);
     renderMapSpots();
-    alert(`Bus ${pendingUpdate.busNo} cleared.`);
 };
 
-document.getElementById('btn-submit-update').onclick = () => {
+// --- Instant Conflict-Free Confirm Logic ---
+document.getElementById('btn-submit-update').onclick = async () => {
     if(!pendingUpdate.spotId) return alert("Tap a spot on the map!");
+    const confirmBtn = document.getElementById('btn-submit-update');
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = "Saving...";
+
     const deviceToken = localStorage.getItem('device_token') || 'anon';
+    const targetSpot = pendingUpdate.spotId;
+    const selectedBus = pendingUpdate.busNo;
+    const targetRoute = pendingUpdate.route;
 
-    // Direct modular database transaction update
-    const updates = {};
-    updates[`activeBuses/${pendingUpdate.spotId}`] = pendingUpdate.route ? {
-        busNo: pendingUpdate.busNo,
-        routeNum: pendingUpdate.route.num,
-        name: pendingUpdate.route.name,
-        users: 1,
-        score: 100,
-        updatedBy: deviceToken
-    } : null;
+    // Trigger 15-min unassigned notification reminder if applicable (Case 1)
+    if (!targetRoute) scheduleUnassignedReminder(selectedBus);
 
-    if(!pendingUpdate.route) {
-        updates[`unassignedBuses/${pendingUpdate.spotId}`] = {
-            busNo: pendingUpdate.busNo,
-            updatedBy: deviceToken
-        };
+    // 1. INSTANT OPTIMISTIC UI CLOSE (No waiting / No double taps)
+    appState = 'VIEW';
+    selFooter.classList.add('hidden'); 
+    fixedFooter.classList.remove('hidden');
+    draggableSheet.style.transform = `translateY(${currentTranslate}px)`; 
+    topBar.style.transform = `translateY(0)`;
+
+    try {
+        // 2. ATOMIC DATABASE INTEGRITY PASS (Eliminate dual-route & duplicate conflicts)
+        const [snapActive, snapUn] = await Promise.all([
+            get(ref(db, 'activeBuses')),
+            get(ref(db, 'unassignedBuses'))
+        ]);
+
+        const activeData = snapActive.val() || {};
+        const unData = snapUn.val() || {};
+        const updates = {};
+
+        // Strip selected bus from ANY other spot or route
+        Object.keys(activeData).forEach(sId => {
+            let bList = activeData[sId].busNos || (activeData[sId].busNo ? [activeData[sId].busNo] : []);
+            if (bList.includes(selectedBus)) {
+                bList = bList.filter(b => b !== selectedBus);
+                if (bList.length === 0) updates[`activeBuses/${sId}`] = null;
+                else updates[`activeBuses/${sId}/busNos`] = bList;
+            }
+        });
+
+        Object.keys(unData).forEach(sId => {
+            if (unData[sId].busNo === selectedBus) updates[`unassignedBuses/${sId}`] = null;
+        });
+
+        // Add to new location (Support 2 buses on 1 spot/route)
+        if (targetRoute) {
+            let existingBusesAtSpot = [];
+            if (activeData[targetSpot] && activeData[targetSpot].routeNum === targetRoute.num) {
+                existingBusesAtSpot = activeData[targetSpot].busNos || (activeData[targetSpot].busNo ? [activeData[targetSpot].busNo] : []);
+            }
+            if (!existingBusesAtSpot.includes(selectedBus)) existingBusesAtSpot.push(selectedBus);
+
+            updates[`activeBuses/${targetSpot}`] = {
+                busNos: existingBusesAtSpot,
+                routeNum: targetRoute.num,
+                name: targetRoute.name,
+                users: (activeData[targetSpot]?.users || 0) + 1,
+                score: 100,
+                updatedBy: deviceToken
+            };
+        } else {
+            updates[`unassignedBuses/${targetSpot}`] = {
+                busNo: selectedBus,
+                updatedBy: deviceToken
+            };
+        }
+
+        await update(ref(db), updates);
+    } catch (err) {
+        console.error("Sync error:", err);
+    } finally {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = "Confirm";
     }
-
-    update(ref(db), updates).then(() => {
-        appState = 'VIEW';
-        selFooter.classList.add('hidden'); 
-        fixedFooter.classList.remove('hidden');
-        draggableSheet.style.transform = `translateY(${currentTranslate}px)`; 
-        topBar.style.transform = `translateY(0)`;
-        renderMapSpots();
-        alert(`Success! Database updated in real-time.`);
-    }).catch((error) => {
-        alert("Sync failed. Check database rules.");
-    });
 };

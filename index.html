@@ -20,6 +20,18 @@
             </div>
         </div>
 
+        <!-- Notification Permission Toast (Witty & Friendly) -->
+        <div id="notif-banner" class="hidden">
+            <div class="notif-content">
+                <h4>Stay Updated? 🚌</h4>
+                <p>Allow notifications to know when bus numbers swap or when rush-hour slots change. <em>Promise: zero spam or campus gossip!</em></p>
+                <div style="display: flex; gap: 8px; margin-top: 10px;">
+                    <button class="btn-secondary" id="btn-dismiss-notif" style="height: 36px; font-size: 13px;">Maybe Later</button>
+                    <button class="btn-primary" id="btn-allow-notif" style="height: 36px; font-size: 13px;">Enable Alerts</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Map Area -->
         <main id="map-container"></main>
 
@@ -46,6 +58,8 @@
                 <a href="#">Send Feedback</a>
                 <a href="#">Story Behind SeenMyBus</a>
             </div>
+            <!-- Side Panel Credit Above Divider -->
+            <div class="side-panel-credit">Developed by Saif Rahman (Batch '28)</div>
             <div class="panel-footer">
                 <a href="#">Terms & Conditions</a>
                 <a href="#">Privacy Policy</a>
@@ -79,7 +93,7 @@
             <div id="step-3-summary" class="selection-summary"></div>
             <div style="display: flex; gap: 8px; width: 100%;">
                 <button class="btn-secondary" id="btn-prev-3" style="flex: 1;">Back</button>
-                <button class="btn-danger" id="btn-clear-bus" style="flex: 1.5;">Clear</button>
+                <button class="btn-danger" id="btn-clear-bus" style="flex: 1.2;">Clear</button>
                 <button class="btn-primary" id="btn-submit-update" style="flex: 2;">Confirm</button>
             </div>
         </div>
@@ -91,7 +105,7 @@
                     <h3>Step 1: Select Route</h3>
                     <select id="route-select" class="custom-select"></select>
                     <div class="modal-actions" style="flex-wrap: wrap;">
-                        <button class="btn-secondary" id="btn-skip-route" style="width: 100%; margin-bottom: 8px;">Skip (Unassigned)</button>
+                        <button class="btn-secondary" id="btn-skip-route" style="width: 100%; margin-bottom: 8px;">Skip (Unassigned Bus)</button>
                         <button class="btn-secondary" id="btn-close-modal" style="flex: 1;">Cancel</button>
                         <button class="btn-primary" id="btn-next-1" style="flex: 1;">Next</button>
                     </div>
@@ -109,7 +123,6 @@
         </div>
     </div>
 
-    <!-- CRITICAL FIX: The script MUST be loaded as a module -->
     <script type="module" src="./app.js"></script>
 </body>
 </html>

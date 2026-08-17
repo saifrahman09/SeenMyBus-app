@@ -13,10 +13,10 @@
 body, html { margin: 0; padding: 0; font-family: 'Open Sans', system-ui, sans-serif; background-color: var(--bg-gray); overflow: hidden; user-select: none; -webkit-user-select: none; }
 #app-container { display: flex; flex-direction: column; height: 100vh; height: 100dvh; position: relative; }
 
-/* Consent Banner */
-#consent-banner { position: absolute; bottom: 20px; left: 20px; right: 20px; background: white; padding: 20px; border-radius: 20px; z-index: 5000; box-shadow: 0 10px 30px rgba(0,0,0,0.2); text-align: center; }
-#consent-banner h4 { margin: 0 0 10px 0; color: var(--btn-grad-start); }
-#consent-banner p { margin: 0; font-size: 12px; color: var(--text-sub); }
+/* Consent & Notification Banners */
+#consent-banner, #notif-banner { position: absolute; bottom: 20px; left: 20px; right: 20px; background: white; padding: 18px 20px; border-radius: 20px; z-index: 5000; box-shadow: 0 10px 30px rgba(0,0,0,0.2); text-align: center; }
+#consent-banner h4, #notif-banner h4 { margin: 0 0 8px 0; color: var(--btn-grad-start); font-size: 16px; }
+#consent-banner p, #notif-banner p { margin: 0; font-size: 12px; color: var(--text-sub); line-height: 1.4; }
 
 /* Top Bar */
 .top-bar { position: absolute; top: max(20px, env(safe-area-inset-top)); left: 20px; right: 20px; z-index: 1000; display: flex; gap: 12px; transition: transform 0.3s ease; }
@@ -35,7 +35,10 @@ body, html { margin: 0; padding: 0; font-family: 'Open Sans', system-ui, sans-se
 .panel-header h2 { margin: 0; font-size: 18px; color: var(--btn-grad-start); }
 .panel-links { flex: 1; display: flex; flex-direction: column; padding: 20px; gap: 20px; }
 .panel-links a { text-decoration: none; color: var(--text-black); font-weight: 600; font-size: 15px; }
-.panel-footer { padding: 20px; border-top: 1px solid #f0f0f0; display: flex; flex-direction: column; gap: 10px; }
+
+/* Side Panel Credit */
+.side-panel-credit { padding: 0 20px 10px 20px; font-size: 10px; font-weight: 600; color: #b5a8d5; letter-spacing: 0.4px; text-transform: uppercase; }
+.panel-footer { padding: 16px 20px 20px 20px; border-top: 1px solid #f0f0f0; display: flex; flex-direction: column; gap: 10px; }
 .panel-footer a { text-decoration: none; color: var(--text-sub); font-size: 12px; }
 
 /* Fixed Bottom Footer */
@@ -52,18 +55,22 @@ body, html { margin: 0; padding: 0; font-family: 'Open Sans', system-ui, sans-se
 #bus-list { overflow-y: auto; flex: 1; padding-bottom: 20px; -webkit-overflow-scrolling: touch; scroll-behavior: smooth; }
 #bus-list::-webkit-scrollbar { width: 0px; }
 
-/* Bus Item & Highlights */
+/* Bus Item & Dual/Multi Badge Display */
 .bus-item { display: flex; justify-content: space-between; align-items: center; padding: 16px 12px; border-bottom: 1px solid #f0f0f0; cursor: pointer; border-radius: 12px; transition: all 0.3s ease; }
 .bus-item.highlighted-bus { background-color: #FFF9E6; box-shadow: inset 4px 0 0 var(--bus-yellow); border-bottom: 1px solid transparent; }
 .bus-info-left { display: flex; flex-direction: column; gap: 2px; }
 .route-badge { font-weight: 600; font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase; color: #a0a0a0; }
 .route-name { font-weight: 600; font-size: 15px; color: var(--text-black); }
 .verified-text { font-weight: 400; font-size: 10px; line-height: 14px; color: #a0a0a0; margin-top: 2px; }
-.bus-circle-badge { width: 40px; height: 40px; background-color: var(--bus-yellow); border: 1px solid var(--bus-stroke); border-radius: 1000px; display: flex; justify-content: center; align-items: center; font-weight: 700; font-size: 16px; color: var(--text-black); }
+
+/* Group of Badges (for 2 buses on 1 location) */
+.bus-badge-group { display: flex; gap: 6px; align-items: center; }
+.bus-circle-badge { min-width: 38px; height: 38px; padding: 0 4px; background-color: var(--bus-yellow); border: 1px solid var(--bus-stroke); border-radius: 1000px; display: flex; justify-content: center; align-items: center; font-weight: 700; font-size: 15px; color: var(--text-black); }
 
 /* Buttons */
-.btn-primary { width: 100%; height: 54px; background: linear-gradient(180deg, var(--btn-grad-start) 0%, var(--btn-grad-end) 100%); border: none; border-radius: 14px; box-shadow: inset 0px 4px 4px rgba(214, 198, 255, 0.34), 0 4px 12px rgba(68, 50, 113, 0.2); font-weight: 600; font-size: 16px; color: #FFFFFF; cursor: pointer; }
-.btn-secondary { width: 100%; height: 54px; background: #e2e8f0; border: none; border-radius: 14px; font-weight: 600; font-size: 16px; color: #475569; cursor: pointer; }
+.btn-primary { width: 100%; height: 54px; background: linear-gradient(180deg, var(--btn-grad-start) 0%, var(--btn-grad-end) 100%); border: none; border-radius: 14px; box-shadow: inset 0px 4px 4px rgba(214, 198, 255, 0.34), 0 4px 12px rgba(68, 50, 113, 0.2); font-weight: 600; font-size: 16px; color: #FFFFFF; cursor: pointer; transition: opacity 0.2s; }
+.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-secondary { width: 100%; height: 54px; background: #e2e8f0; border: none; border-radius: 14px; font-weight: 600; font-size: 15px; color: #475569; cursor: pointer; }
 .btn-danger { width: 100%; height: 54px; background: #fee2e2; border: none; border-radius: 14px; font-weight: 600; font-size: 14px; color: #dc2626; cursor: pointer; }
 
 /* Lightbox Modal & Grid */
@@ -74,7 +81,7 @@ body, html { margin: 0; padding: 0; font-family: 'Open Sans', system-ui, sans-se
 .modal-actions { display: flex; gap: 12px; margin-top: 24px; }
 .custom-select { width: 100%; padding: 14px; border-radius: 12px; border: 1px solid #ccc; font-size: 16px; outline: none; background: #f8f9fa; font-family: inherit; }
 .bus-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-.grid-bus { aspect-ratio: 1; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: 700; font-size: 16px; cursor: pointer; transition: all 0.2s; }
+.grid-bus { aspect-ratio: 1; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: 700; font-size: 15px; cursor: pointer; transition: all 0.2s; }
 .grid-bus.grey { background: #E2E8F0; color: #64748B; border: 1px solid #CBD5E1; }
 .grid-bus.green { background: #bbf7d0; color: #166534; border: 1px solid #166534; }
 .grid-bus.yellow-active { background: var(--bus-yellow); color: #000; border: 1px solid var(--bus-stroke); transform: scale(1.1); box-shadow: 0 4px 10px rgba(252,176,65,0.4); }
