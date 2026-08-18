@@ -1,6 +1,6 @@
 // Import Firebase modular SDKs via CDN
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
-import { getDatabase, ref, onValue, set, update, get } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-database.js";
+import { getDatabase, ref, onValue, set, update, get, goOnline } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-database.js";
 
 // --- FIREBASE CONFIGURATION ---
 const firebaseConfig = {
@@ -24,7 +24,7 @@ let activeBuses = [];
 let unassignedBuses = [];
 let appState = 'VIEW'; 
 let pendingUpdate = { route: null, busNo: null, spotId: null };
-let previousBusMap = {};
+let busLocationTracker = {}; 
 
 // Routes & Slots Registry
 const allRoutes = [
@@ -35,45 +35,51 @@ const allRoutes = [
 const allBuses = ["01", "02", "03", "04", "05", "10", "15", "19", "22", "25", "29", "30"];
 const allSpots = ["spot-01", "spot-02", "spot-03", "spot-04", "spot-05", "spot-06", "spot-07", "spot-08", "spot-09", "spot-10", "spot-11"];
 
-// --- 1. Preload Splash Screen Dismissal ---
-function hideSplashScreen() {
-    const splash = document.getElementById('splash-screen');
-    if (splash && !splash.classList.contains('fade-out')) {
-        splash.classList.add('fade-out');
-        setTimeout(() => {
-            if (splash.parentNode) splash.remove();
-        }, 500);
+// --- 1. Admin Visibility Check (Local Secure Session Only) ---
+function checkAdminVisibility() {
+    const adminLink = document.getElementById('admin-portal-link');
+    const adminTopBtn = document.getElementById('admin-top-btn');
+
+    if (localStorage.getItem('smb_admin_active') === 'true') {
+        if (adminLink) adminLink.classList.remove('hidden');
+        if (adminTopBtn) adminTopBtn.classList.remove('hidden');
+    } else {
+        if (adminLink) adminLink.classList.add('hidden');
+        if (adminTopBtn) adminTopBtn.classList.add('hidden');
     }
 }
+// Execute immediately on load
+checkAdminVisibility();
 
-// Fallback timer
-setTimeout(hideSplashScreen, 2500);
+// --- 2. Triple-Tap Sidebar Logo Gesture (Direct Navigation) ---
+function initSidebarLogoTap() {
+    const brandLogo = document.querySelector('.brand-logo');
+    if (!brandLogo) return;
 
-// --- 2. Pinch-to-Zoom First-Time Visual Guide ---
-function initPinchGuide() {
-    const guide = document.getElementById('pinch-guide');
-    if (!guide) return;
-    
-    if (!localStorage.getItem('smb_guide_shown')) {
-        guide.classList.remove('hidden');
+    let tapCount = 0;
+    let tapTimeout = null;
 
-        const dismissGuide = () => {
-            if (!guide.classList.contains('fade-out')) {
-                guide.classList.add('fade-out');
-                localStorage.setItem('smb_guide_shown', 'true');
-                setTimeout(() => guide.classList.add('hidden'), 500);
-            }
-        };
+    brandLogo.style.cursor = 'pointer';
 
-        if (mapContainer) {
-            mapContainer.addEventListener('touchstart', dismissGuide, { once: true, passive: true });
-            mapContainer.addEventListener('mousedown', dismissGuide, { once: true });
+    brandLogo.addEventListener('click', (e) => {
+        e.preventDefault();
+        tapCount++;
+        clearTimeout(tapTimeout);
+
+        if (tapCount >= 3) {
+            tapCount = 0;
+            // The Triple Tap explicitly navigates to the login screen
+            window.location.href = './admin-dashboard.html';
+        } else {
+            tapTimeout = setTimeout(() => {
+                tapCount = 0;
+            }, 1200);
         }
-        setTimeout(dismissGuide, 4500);
-    }
+    });
 }
+initSidebarLogoTap();
 
-// --- 3. Deterministic Hardware Fingerprinting ---
+// --- 3. Deterministic Hardware Fingerprinting (For normal users) ---
 function getDeterministicDeviceToken() {
     try {
         const canvas = document.createElement('canvas');
@@ -108,7 +114,59 @@ function getDeterministicDeviceToken() {
         return 'dev_fallback_' + screen.width + 'x' + screen.height;
     }
 }
+const currentDeviceToken = getDeterministicDeviceToken();
 
+// --- 4. Real-Time Keepalive & Reconnect ---
+const connectedRef = ref(db, ".info/connected");
+onValue(connectedRef, (snap) => {
+    if (snap.val() === true) {
+        console.log("SeenMyBus Realtime Connected");
+    }
+});
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+        goOnline(db);
+    }
+});
+
+// --- 5. Splash Screen Dismissal ---
+function hideSplashScreen() {
+    const splash = document.getElementById('splash-screen');
+    if (splash && !splash.classList.contains('fade-out')) {
+        splash.classList.add('fade-out');
+        setTimeout(() => {
+            if (splash.parentNode) splash.remove();
+        }, 500);
+    }
+}
+setTimeout(hideSplashScreen, 1500); // Failsafe fast dismiss
+
+// --- 6. Pinch Guide ---
+function initPinchGuide() {
+    const guide = document.getElementById('pinch-guide');
+    if (!guide) return;
+    
+    if (!localStorage.getItem('smb_guide_shown')) {
+        guide.classList.remove('hidden');
+
+        const dismissGuide = () => {
+            if (!guide.classList.contains('fade-out')) {
+                guide.classList.add('fade-out');
+                localStorage.setItem('smb_guide_shown', 'true');
+                setTimeout(() => guide.classList.add('hidden'), 500);
+            }
+        };
+
+        if (mapContainer) {
+            mapContainer.addEventListener('touchstart', dismissGuide, { once: true, passive: true });
+            mapContainer.addEventListener('mousedown', dismissGuide, { once: true });
+        }
+        setTimeout(dismissGuide, 4500);
+    }
+}
+
+// Monthly cycle key (Resets 5th of every month)
 function getCurrentCycleKey() {
     const now = new Date();
     let year = now.getFullYear();
@@ -123,9 +181,8 @@ function getCurrentCycleKey() {
 }
 
 async function addContributionPoints(points = 10) {
-    const deviceToken = getDeterministicDeviceToken();
     const cycleKey = getCurrentCycleKey();
-    const userRef = ref(db, `userProfiles/${deviceToken}/${cycleKey}`);
+    const userRef = ref(db, `userProfiles/${currentDeviceToken}/${cycleKey}`);
 
     try {
         const snap = await get(userRef);
@@ -158,16 +215,15 @@ function updateRankDisplay(score) {
 }
 
 async function loadUserRank() {
-    const deviceToken = getDeterministicDeviceToken();
     const cycleKey = getCurrentCycleKey();
     try {
-        const snap = await get(ref(db, `userProfiles/${deviceToken}/${cycleKey}`));
+        const snap = await get(ref(db, `userProfiles/${currentDeviceToken}/${cycleKey}`));
         const data = snap.val() || { score: 0 };
         updateRankDisplay(data.score || 0);
     } catch (e) {}
 }
 
-// --- 4. Notification Engine (15-Second Delay) ---
+// --- 7. Notifications & Broadcast Listeners ---
 function initNotificationSystem() {
     const notifBanner = document.getElementById('notif-banner');
     if (!notifBanner) return;
@@ -204,41 +260,128 @@ function sendLocalNotification(title, body) {
     if ("Notification" in window && Notification.permission === "granted") {
         new Notification(title, {
             body: body,
-            icon: "logo.svg"
+            icon: "./logo.svg"
         });
     }
 }
 
-function scheduleUnassignedReminder(busNo) {
-    localStorage.setItem('smb_unassigned_remind_time', Date.now() + 15 * 60 * 1000);
-    localStorage.setItem('smb_unassigned_bus_no', busNo);
+onValue(ref(db, 'broadcastNotifications'), (snap) => {
+    const broadcasts = snap.val();
+    if (!broadcasts) return;
+    const lastSeenTime = parseInt(localStorage.getItem('smb_last_broadcast_seen') || '0', 10);
+
+    Object.keys(broadcasts).forEach(notifId => {
+        const item = broadcasts[notifId];
+        if (item && item.createdAt > lastSeenTime) {
+            sendLocalNotification(item.title || "Campus Bus Alert", item.message);
+            localStorage.setItem('smb_last_broadcast_seen', Date.now().toString());
+        }
+    });
+});
+
+// --- 8. Smooth SVG Relocation Transit Animation ---
+function getSpotCoordinates(spotId) {
+    const g = document.getElementById(spotId);
+    if (!g) return null;
+    const circle = g.querySelector('circle');
+    if (!circle) return null;
+    return {
+        x: parseFloat(circle.getAttribute('cx')),
+        y: parseFloat(circle.getAttribute('cy')),
+        r: parseFloat(circle.getAttribute('r')) || 6
+    };
 }
 
-setInterval(() => {
-    const remindTime = localStorage.getItem('smb_unassigned_remind_time');
-    const busNo = localStorage.getItem('smb_unassigned_bus_no');
-    if (remindTime && Date.now() >= parseInt(remindTime, 10)) {
-        localStorage.removeItem('smb_unassigned_remind_time');
-        localStorage.removeItem('smb_unassigned_bus_no');
-        sendLocalNotification("Spot Reminder", `Did you notice which parking slot Bus ${busNo} moved to? Tap to update!`);
-    }
-}, 30000);
+function animateBusTransition(busNo, fromSpotId, toSpotId) {
+    if (!mapElement || fromSpotId === toSpotId) return;
+    const start = getSpotCoordinates(fromSpotId);
+    const end = getSpotCoordinates(toSpotId);
+    if (!start || !end) return;
 
-// --- 5. Shift Expiry & Purge ---
+    const animGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    animGroup.setAttribute('class', 'animating-bus-transit');
+    
+    const pulseCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    pulseCircle.setAttribute('cx', '0');
+    pulseCircle.setAttribute('cy', '0');
+    pulseCircle.setAttribute('r', (start.r * 1.5).toString());
+    pulseCircle.setAttribute('fill', '#815FD7');
+    pulseCircle.setAttribute('class', 'transit-glow-pulse');
+
+    const busCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    busCircle.setAttribute('cx', '0');
+    busCircle.setAttribute('cy', '0');
+    busCircle.setAttribute('r', start.r.toString());
+    busCircle.setAttribute('fill', '#FCB041');
+    busCircle.setAttribute('stroke', '#815FD7');
+    busCircle.setAttribute('stroke-width', '1.5');
+
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', '0');
+    text.setAttribute('y', '0');
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('dy', '0.35em');
+    text.setAttribute('class', 'spot-text text-black');
+    text.style.fontSize = '4.2px';
+    text.style.fontWeight = '800';
+    text.textContent = busNo;
+
+    animGroup.appendChild(pulseCircle);
+    animGroup.appendChild(busCircle);
+    animGroup.appendChild(text);
+
+    animGroup.style.transform = `translate(${start.x}px, ${start.y}px)`;
+    animGroup.style.transition = 'transform 1.3s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.3s ease';
+
+    mapElement.appendChild(animGroup);
+
+    requestAnimationFrame(() => {
+        animGroup.style.transform = `translate(${end.x}px, ${end.y}px) scale(1.15)`;
+    });
+
+    setTimeout(() => {
+        animGroup.style.opacity = '0';
+        setTimeout(() => animGroup.remove(), 300);
+
+        const targetSpotEl = document.getElementById(toSpotId);
+        if (targetSpotEl) {
+            targetSpotEl.classList.add('pop-animate');
+            setTimeout(() => targetSpotEl.classList.remove('pop-animate'), 600);
+        }
+    }, 1300);
+}
+
+// --- 9. Shift Departure Cutoff & Stale Purge Engine ---
 function isDataStale(updatedAt) {
     if (!updatedAt) return false;
-    return (Date.now() - updatedAt) > (120 * 60 * 1000);
+    return (Date.now() - updatedAt) > (90 * 60 * 1000);
 }
 
 async function checkShiftPurge(data) {
+    if (!data) return;
+    const now = new Date();
+    const currentMins = now.getHours() * 60 + now.getMinutes();
+    
+    // Scheduled Shift Departure Cutoffs: 1:15 PM, 4:15 PM, 7:00 PM
+    const cutoffs = [795, 975, 1140];
     const updates = {};
     let needsPurge = false;
 
     Object.keys(data).forEach(spotId => {
         const item = data[spotId];
-        if (item && item.updatedAt && isDataStale(item.updatedAt)) {
-            updates[`activeBuses/${spotId}`] = null;
-            needsPurge = true;
+        if (item && item.updatedAt) {
+            const itemDate = new Date(item.updatedAt);
+            const itemMins = itemDate.getHours() * 60 + itemDate.getMinutes();
+            const isSameDay = now.toDateString() === itemDate.toDateString();
+
+            const crossedDepartureCutoff = isSameDay && cutoffs.some(c => itemMins < c && currentMins >= c);
+            const isStale = isDataStale(item.updatedAt);
+            const isPreviousDay = !isSameDay;
+
+            if (crossedDepartureCutoff || isStale || isPreviousDay) {
+                updates[`activeBuses/${spotId}`] = null;
+                needsPurge = true;
+            }
         }
     });
 
@@ -246,12 +389,24 @@ async function checkShiftPurge(data) {
         try {
             await update(ref(db), updates);
         } catch (e) {
-            console.error("Purge sync error:", e);
+            console.error("Shift auto-purge sync error:", e);
         }
     }
 }
 
-// --- Consent & Sidebar Navigation ---
+setInterval(async () => {
+    try {
+        const snap = await get(ref(db, 'activeBuses'));
+        const data = snap.val();
+        if (data) {
+            await checkShiftPurge(data);
+        }
+    } catch (e) {
+        console.warn("Background departure check notice:", e);
+    }
+}, 20000);
+
+// --- 10. Consent & Sidebar Setup ---
 const consentBanner = document.getElementById('consent-banner');
 if (consentBanner && !localStorage.getItem('aju_consent')) {
     consentBanner.classList.remove('hidden');
@@ -285,7 +440,7 @@ if (btnHam) btnHam.onclick = togglePanel;
 if (closePanel) closePanel.onclick = togglePanel;
 if (sideOverlay) sideOverlay.onclick = togglePanel;
 
-// --- Load Campus Map & Dismiss Splash Screen ---
+// --- 11. Load Campus Map (No Artificial Delay) ---
 fetch('./ArkaJainUniversityBusMap.xml')
     .then(res => {
         if (!res.ok) throw new Error("Map load failure");
@@ -294,7 +449,8 @@ fetch('./ArkaJainUniversityBusMap.xml')
     .then(svgText => {
         if (mapContainer) {
             mapContainer.innerHTML = svgText;
-            setTimeout(() => {
+            
+            requestAnimationFrame(() => {
                 mapElement = mapContainer.querySelector('svg');
                 if (mapElement) {
                     mapElement.id = 'campus-map';
@@ -304,8 +460,9 @@ fetch('./ArkaJainUniversityBusMap.xml')
                     if (rootGroup) rootGroup.removeAttribute('clip-path');
                     if (activeBuses.length > 0) renderMapSpots();
                 }
-                setTimeout(hideSplashScreen, 1200);
-            }, 100);
+                
+                hideSplashScreen(); // Instant dismiss after render
+            });
         }
     })
     .catch(err => {
@@ -313,54 +470,64 @@ fetch('./ArkaJainUniversityBusMap.xml')
         hideSplashScreen();
     });
 
-// --- Realtime Firebase Sync ---
+// --- 12. Realtime Firebase Sync ---
 onValue(ref(db, 'activeBuses'), (snapshot) => {
-    const data = snapshot.val();
-    
-    const skeleton = document.getElementById('skeleton-loader');
-    const busListEl = document.getElementById('bus-list');
-    if (skeleton) skeleton.classList.add('hidden');
-    if (busListEl) busListEl.classList.remove('hidden');
+    try {
+        const data = snapshot.val();
+        
+        const skeleton = document.getElementById('skeleton-loader');
+        const busListEl = document.getElementById('bus-list');
+        if (skeleton) skeleton.classList.add('hidden');
+        if (busListEl) busListEl.classList.remove('hidden');
 
-    if (!data) {
-        activeBuses = [];
-        if (appState === 'VIEW') {
+        if (!data) {
+            activeBuses = [];
+            busLocationTracker = {};
             if (mapElement) renderMapSpots();
             renderList([]);
+            return;
         }
-        return;
-    }
 
-    checkShiftPurge(data);
+        checkShiftPurge(data);
 
-    activeBuses = Object.keys(data).map(spotId => {
-        const item = data[spotId];
-        const buses = item.busNos ? item.busNos : (item.busNo ? [item.busNo] : []);
-        return { spotId, ...item, busNos: buses };
-    });
-
-    activeBuses.forEach(ab => {
-        ab.busNos.forEach(bNo => {
-            if (previousBusMap[bNo] && previousBusMap[bNo].routeNum !== ab.routeNum && (ab.users >= 3)) {
-                sendLocalNotification("Bus Updated", `Route ${ab.routeNum} (${ab.name}) is operating as Bus #${bNo}.`);
-            }
-            previousBusMap[bNo] = { routeNum: ab.routeNum, spotId: ab.spotId };
+        const newActiveBuses = Object.keys(data).map(spotId => {
+            const item = data[spotId];
+            const buses = item.busNos ? item.busNos : (item.busNo ? [item.busNo] : []);
+            return { spotId, ...item, busNos: buses };
         });
-    });
 
-    if (appState === 'VIEW') {
-        if (mapElement) renderMapSpots();
-        renderList(activeBuses);
+        newActiveBuses.forEach(ab => {
+            ab.busNos.forEach(bNo => {
+                const prevSpot = busLocationTracker[bNo];
+                if (prevSpot && prevSpot !== ab.spotId) {
+                    animateBusTransition(bNo, prevSpot, ab.spotId);
+                }
+                busLocationTracker[bNo] = ab.spotId;
+            });
+        });
+
+        activeBuses = newActiveBuses;
+
+        if (appState === 'VIEW') {
+            if (mapElement) renderMapSpots();
+            renderList(activeBuses);
+        }
+    } catch (err) {
+        console.error("Realtime activeBuses sync error:", err);
     }
 }, (err) => {
-    console.error("Firebase listen error:", err);
+    console.error("Firebase connection error:", err);
     hideSplashScreen();
 });
 
 onValue(ref(db, 'unassignedBuses'), (snapshot) => {
-    const data = snapshot.val();
-    unassignedBuses = data ? Object.keys(data).map(spotId => ({ spotId, ...data[spotId] })) : [];
-    if (appState === 'VIEW' && mapElement) renderMapSpots();
+    try {
+        const data = snapshot.val();
+        unassignedBuses = data ? Object.keys(data).map(spotId => ({ spotId, ...data[spotId] })) : [];
+        if (appState === 'VIEW' && mapElement) renderMapSpots();
+    } catch (e) {
+        console.error("Realtime unassigned sync error:", e);
+    }
 });
 
 function getUnassignedBusNumbers() {
@@ -369,7 +536,7 @@ function getUnassignedBusNumbers() {
     return allBuses.filter(bNo => !assigned.has(bNo));
 }
 
-// --- Map Render Logic ---
+// --- 13. Map Render Logic ---
 function renderMapSpots() {
     allSpots.forEach(spotId => {
         const g = document.getElementById(spotId);
@@ -392,7 +559,6 @@ function renderMapSpots() {
                 g.style.cursor = 'pointer';
                 g.onclick = (e) => {
                     e.stopPropagation();
-                    highlightBusInList(busInfo.busNos[0]);
                     focusOnSpot(spotId);
                 };
             } else if (unassignedInfo) {
@@ -463,7 +629,7 @@ function addTextToSpot(g, textContent, colorClass) {
     g.appendChild(text);
 }
 
-// --- Sheet Drag & Pan Engine ---
+// --- 14. Sheet Drag & Pan Engine (WITH Double-Tap Zoom) ---
 const draggableSheet = document.getElementById('draggable-sheet');
 const dragHandle = document.getElementById('drag-handle-area');
 const contentWrapper = document.getElementById('sheet-content-wrapper');
@@ -494,6 +660,7 @@ if (dragHandle) {
 }
 
 let scale = 1, pointX = 0, pointY = 0, startX = 0, startY = 0, isPanning = false, initialPinchDist = null, initialScale = 1;
+let lastTapTime = 0; 
 
 function applyBoundaries() {
     if (!mapContainer) return;
@@ -532,10 +699,56 @@ if (mapContainer) {
         if (e.touches.length === 1 && isPanning) { pointX = e.touches[0].clientX - startX; pointY = e.touches[0].clientY - startY; setTransform(); }
         else if (e.touches.length === 2 && initialPinchDist) { scale = Math.min(Math.max(1, initialScale * (Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY) / initialPinchDist)), 5); setTransform(); }
     }, { passive: true });
-    mapContainer.addEventListener('touchend', e => { if (e.touches.length === 0) isPanning = false; });
+
+    // Double Tap Zoom Engine
+    mapContainer.addEventListener('touchend', e => { 
+        if (e.touches.length === 0) isPanning = false; 
+        
+        const currentTime = new Date().getTime();
+        const tapLength = currentTime - lastTapTime;
+        
+        if (tapLength < 300 && tapLength > 0) {
+            let clientX, clientY;
+            if(e.changedTouches && e.changedTouches.length > 0) {
+                clientX = e.changedTouches[0].clientX; clientY = e.changedTouches[0].clientY;
+            } else return;
+            
+            const rect = mapContainer.getBoundingClientRect();
+            const x = clientX - rect.left, y = clientY - rect.top;
+
+            if (scale < 3.5) {
+                const xs = (x - pointX) / scale, ys = (y - pointY) / scale;
+                scale = 3.5; pointX = x - xs * scale; pointY = y - ys * scale;
+            } else {
+                scale = 1; pointX = 0; pointY = 0;
+            }
+            
+            mapElement.style.transition = 'transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)';
+            setTransform();
+            setTimeout(() => { if(mapElement) mapElement.style.transition = 'none'; }, 400);
+            if (e.cancelable) e.preventDefault();
+        }
+        lastTapTime = currentTime;
+    });
+
+    mapContainer.addEventListener('dblclick', e => {
+        const rect = mapContainer.getBoundingClientRect();
+        const x = e.clientX - rect.left, y = e.clientY - rect.top;
+        
+        if (scale < 3.5) {
+            const xs = (x - pointX) / scale, ys = (y - pointY) / scale;
+            scale = 3.5; pointX = x - xs * scale; pointY = y - ys * scale;
+        } else {
+            scale = 1; pointX = 0; pointY = 0;
+        }
+        
+        mapElement.style.transition = 'transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)';
+        setTransform();
+        setTimeout(() => { if(mapElement) mapElement.style.transition = 'none'; }, 400);
+    });
 }
 
-// --- Destination/Route Grouping ---
+// --- 15. Destination & Multi-Bus Grouping ---
 function getGroupedRoutes(buses) {
     const routeMap = {};
 
@@ -561,22 +774,15 @@ function getGroupedRoutes(buses) {
     return Object.values(routeMap);
 }
 
-// --- Bus List UI ---
+// --- 16. Bus List UI (Admins Now Render Secretly as Normal Users) ---
 const listContainer = id => document.getElementById(id);
 
-function renderList(buses, highlightBusNo = null) {
+function renderList(buses) {
     const container = listContainer('bus-list');
     if (!container) return;
     container.innerHTML = '';
     
     let groupedRoutes = getGroupedRoutes(buses);
-
-    if (highlightBusNo) {
-        groupedRoutes.sort((a, b) => 
-            a.buses.some(b => b.busNo === highlightBusNo) ? -1 : 
-            (b.buses.some(b => b.busNo === highlightBusNo) ? 1 : 0)
-        );
-    }
 
     const emptyState = document.getElementById('empty-state');
     if (groupedRoutes.length === 0) {
@@ -587,14 +793,16 @@ function renderList(buses, highlightBusNo = null) {
 
     groupedRoutes.forEach(item => {
         const div = document.createElement('div');
-        const isHighlighted = highlightBusNo && item.buses.some(b => b.busNo === highlightBusNo);
-        div.className = `bus-item ${isHighlighted ? 'highlighted-bus' : ''}`;
+        div.className = 'bus-item';
         
+        const displayUsers = item.users >= 999 ? 1 : (item.users || 1);
+        const subtextHtml = `<span class="verified-text">Suggested by ${displayUsers} user${displayUsers !== 1 ? 's' : ''}</span>`;
+
         div.innerHTML = `
             <div class="bus-info-left">
                 <span class="route-badge">Route ${item.routeNum}</span>
                 <span class="route-name">${item.name}</span>
-                <span class="verified-text">Suggested by ${item.users || 1} users</span>
+                ${subtextHtml}
             </div>
             <div class="bus-badge-group"></div>
         `;
@@ -623,17 +831,6 @@ function renderList(buses, highlightBusNo = null) {
 
         container.appendChild(div);
     });
-}
-
-function highlightBusInList(busNo) {
-    currentTranslate = 0;
-    if (draggableSheet) {
-        draggableSheet.style.transition = 'transform 0.35s';
-        draggableSheet.style.transform = `translateY(0)`;
-    }
-    renderList(activeBuses, busNo);
-    const busListEl = listContainer('bus-list');
-    if (busListEl) busListEl.scrollTop = 0;
 }
 
 const searchInput = document.getElementById('search-input');
@@ -681,7 +878,7 @@ function focusOnSpot(spotId) {
     setTimeout(() => { if (spotGroup) spotGroup.classList.remove('pop-animate'); }, 500); 
 }
 
-// --- Simplified Modal UI & Tab Switching ---
+// --- 17. Modal UI & Tab Switching ---
 const modal = document.getElementById('modal-overlay');
 const tabPark = document.getElementById('tab-park');
 const tabDepart = document.getElementById('tab-depart');
@@ -732,7 +929,7 @@ function switchTab(mode) {
 if (tabPark) tabPark.onclick = () => switchTab('PARK');
 if (tabDepart) tabDepart.onclick = () => switchTab('DEPART');
 
-// --- 1-Tap Departure Flow ---
+// --- 18. Fast Departure Flow ---
 function renderSimpleDepartList() {
     if (!departList) return;
     departList.innerHTML = '';
@@ -771,6 +968,7 @@ function renderSimpleDepartList() {
             activeBuses.forEach(ab => { ab.busNos = ab.busNos.filter(b => b !== targetBus); });
             activeBuses = activeBuses.filter(ab => ab.busNos.length > 0);
             unassignedBuses = unassignedBuses.filter(ub => ub.busNo !== targetBus);
+            delete busLocationTracker[targetBus];
             
             renderMapSpots();
             renderList(activeBuses);
@@ -811,7 +1009,7 @@ async function executeFastUnassign(busNumber) {
     }
 }
 
-// --- Park Flow ---
+// --- 19. Park Flow (Strictly Compliant with DB Rules) ---
 const skipRouteBtn = document.getElementById('btn-skip-route');
 if (skipRouteBtn) {
     skipRouteBtn.onclick = () => {
@@ -917,19 +1115,16 @@ if (prev3Btn) {
     };
 }
 
-// Confirm Parking Slot
+// Confirm Parking Slot (Conforms to activeBuses and unassignedBuses DB validation rules)
 const submitUpdateBtn = document.getElementById('btn-submit-update');
 if (submitUpdateBtn) {
     submitUpdateBtn.onclick = async () => {
         if (!pendingUpdate.spotId) return alert("Tap a spot on the map!");
         submitUpdateBtn.disabled = true;
 
-        const deviceToken = getDeterministicDeviceToken();
         const targetSpot = pendingUpdate.spotId;
         const selectedBus = pendingUpdate.busNo;
         const targetRoute = pendingUpdate.route;
-
-        if (!targetRoute) scheduleUnassignedReminder(selectedBus);
 
         appState = 'VIEW';
         if (selFooter) selFooter.classList.add('hidden'); 
@@ -968,19 +1163,21 @@ if (submitUpdateBtn) {
                 }
                 if (!existingBusesAtSpot.includes(selectedBus)) existingBusesAtSpot.push(selectedBus);
 
+                // Required fields matching database validation rules: busNo, routeNum, name, users
                 updates[`activeBuses/${targetSpot}`] = {
+                    busNo: selectedBus,
                     busNos: existingBusesAtSpot,
                     routeNum: targetRoute.num,
                     name: targetRoute.name,
-                    users: (activeData[targetSpot]?.users || 0) + 1,
+                    users: Number((activeData[targetSpot]?.users || 0) + 1),
                     updatedAt: timestamp,
-                    updatedBy: deviceToken
+                    updatedBy: currentDeviceToken
                 };
             } else {
                 updates[`unassignedBuses/${targetSpot}`] = {
                     busNo: selectedBus,
                     updatedAt: timestamp,
-                    updatedBy: deviceToken
+                    updatedBy: currentDeviceToken
                 };
             }
 

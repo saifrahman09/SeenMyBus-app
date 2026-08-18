@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <title>Admin Dashboard | SeenMyBus</title>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./map.css">
+    <style>
+        :root {
+            --bg-gray: #f8f6fc;
+            --text-black: #0f172a;
+            --text-sub: #64748b;
+            --bus-yellow: #FCB041;
+            --btn-grad-start: #815FD7;
+            --btn-grad-end: #443271;
+            --card-shadow: 0 10px 30px rgba(129, 95, 215, 0.08);
+            
+            /* Premium Form Colors */
+            --form-bg: #F5F3FF;
+            --form-border: #C4B5FD;
+            --form-focus: #815FD7;
+            --form-text: #1E1B4B;
+        }
+
+        *, *::before, *::after {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent !important;
+            outline: none;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-gray);
+            font-family: 'Open Sans', system-ui, -apple-system, sans-serif;
+            color: var(--text-black);
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .ui-icon {
+            width: 22px; height: 22px;
+            stroke: var(--btn-grad-start);
+            fill: none; stroke-width: 2.5px;
+            stroke-linecap: round; stroke-linejoin: round;
+            flex-shrink: 0;
+        }
+
+        .admin-layout { max-width: 900px; margin: 0 auto; padding: 24px 16px 100px 16px; }
+
+        /* Auth Screen */
+        #auth-screen {
+            background: white;
+            padding: 50px 30px;
+            border-radius: 32px;
+            text-align: center;
+            box-shadow: var(--card-shadow);
+            max-width: 420px;
+            margin: 80px auto;
+            position: relative;
+            border: 1px solid rgba(129, 95, 215, 0.1);
+        }
+
+        .btn-back-home {
+            display: inline-flex; align-items: center; gap: 6px;
+            position: absolute; top: -50px; left: 0;
+            color: var(--btn-grad-start); text-decoration: none;
+            font-weight: 700; font-size: 14px;
+            background: white; padding: 10px 16px; border-radius: 100px;
+            box-shadow: 0 4px 15px rgba(129, 95, 215, 0.1);
+        }
+
+        #auth-screen h2 { margin: 0 0 30px 0; color: var(--text-black); font-size: 22px; font-weight: 800; }
+
+        .btn-google-auth {
+            background: white; border: 1.5px solid #E2E8F0;
+            padding: 14px 20px; border-radius: 16px;
+            font-size: 15px; font-weight: 700; color: #1e293b;
+            display: flex; align-items: center; justify-content: center; gap: 12px;
+            width: 100%; cursor: pointer; transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+            font-family: inherit;
+        }
+
+        .btn-google-auth:active { transform: scale(0.97); }
+
+        /* Dashboard Top Nav */
+        .admin-nav {
+            display: flex; justify-content: space-between; align-items: center;
+            background: white; padding: 16px 20px; border-radius: 20px;
+            box-shadow: var(--card-shadow); margin-bottom: 24px;
+            border: 1px solid rgba(129, 95, 215, 0.1);
+        }
+
+        .brand-logo { height: 38px; width: auto; }
+
+        .btn-logout {
+            background: #fff0f0; color: #e11d48; border: 1px solid #ffe4e6;
+            padding: 10px 16px; border-radius: 12px; font-size: 13px; font-weight: 700;
+            cursor: pointer; display: flex; align-items: center; gap: 8px;
+            transition: transform 0.15s ease; font-family: inherit;
+        }
+        .btn-logout:active { transform: scale(0.95); }
+
+        /* Grid & Cards */
+        .dashboard-grid { display: grid; grid-template-columns: 1fr; gap: 24px; }
+        @media(min-width: 768px) { .dashboard-grid { grid-template-columns: 1fr 1fr; } }
+
+        .card {
+            background: white; border-radius: 28px; padding: 26px;
+            box-shadow: var(--card-shadow); border: 1px solid rgba(129, 95, 215, 0.1);
+        }
+        .card.full-width { grid-column: 1 / -1; }
+
+        .card-header {
+            display: flex; align-items: center; gap: 10px; margin-bottom: 20px;
+        }
+        .card-header h3 { margin: 0; font-size: 17px; font-weight: 800; color: var(--text-black); }
+
+        /* Premium Forms */
+        .form-group { margin-bottom: 18px; }
+        .form-group label {
+            display: block; font-size: 11.5px; font-weight: 700;
+            color: #64748b; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;
+        }
+
+        .form-control {
+            width: 100%; padding: 16px 18px; border-radius: 16px;
+            border: 1.5px solid var(--form-border); background: var(--form-bg);
+            font-size: 15px; color: var(--form-text); font-family: inherit; font-weight: 600;
+            transition: all 0.25s ease;
+        }
+        .form-control::placeholder { color: #A78BFA; font-weight: 500; }
+        .form-control:focus { border-color: var(--form-focus); background: #FFFFFF; box-shadow: 0 0 0 4px rgba(129, 95, 215, 0.15); }
+
+        /* Beautiful Buttons */
+        .btn-action {
+            width: 100%; height: 54px; border: none; border-radius: 16px;
+            background: linear-gradient(180deg, var(--btn-grad-start) 0%, var(--btn-grad-end) 100%);
+            box-shadow: inset 0px 4px 4px rgba(214, 198, 255, 0.34), 0 6px 16px rgba(68, 50, 113, 0.25);
+            color: white; font-weight: 700; font-size: 15.5px; cursor: pointer;
+            transition: transform 0.15s ease; font-family: inherit; display: flex; justify-content: center; align-items: center; gap: 10px;
+        }
+        .btn-action:active { transform: scale(0.97); }
+
+        .btn-danger-action {
+            background: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%);
+            color: white; border: none; height: 54px; border-radius: 16px;
+            font-weight: 700; font-size: 15px; cursor: pointer; width: 100%;
+            box-shadow: inset 0px 4px 4px rgba(255, 200, 200, 0.3), 0 6px 16px rgba(185, 28, 28, 0.25);
+        }
+
+        /* Interactive Map Container (Clipped & Scrollable) */
+        #admin-map-wrapper { margin-top: 10px; border-radius: 16px; overflow: hidden; border: 1.5px solid var(--form-border); }
+        #admin-map-container { width: 100%; height: 350px; background: #eef2f6; overflow: hidden; touch-action: none; position: relative; }
+        #admin-map-container svg { width: 100%; height: 100%; transform-origin: 0 0; }
+        
+        /* Map Styles applied internally */
+        .spot-highlight circle { fill: #22c55e !important; stroke: #166534 !important; stroke-width: 2px !important; }
+
+        /* Live Fleet List */
+        .live-slot-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 16px; background: white; border: 1px solid #e2e8f0; border-radius: 16px; margin-bottom: 12px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.03);
+        }
+        .live-slot-item strong { font-size: 15px; color: var(--text-black); display: block; margin-bottom: 4px; }
+        .live-slot-item span { font-size: 12px; color: var(--text-sub); }
+
+        .btn-del-mini {
+            background: #fff0f0; color: #e11d48; border: none; padding: 10px 14px;
+            border-radius: 12px; font-size: 12px; font-weight: 700; cursor: pointer;
+        }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div class="admin-layout">
+        <!-- Auth Gate -->
+        <div id="auth-screen">
+            <a href="./index.html" class="btn-back-home">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                Back to Map
+            </a>
+            <h2>Go to Admin Dashboard</h2>
+            <button id="btn-google-login" class="btn-google-auth">
+                <svg width="22" height="22" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
+                <span>Sign in with Google</span>
+            </button>
+            <div id="auth-error-msg" style="color: #ef4444; font-size: 13px; margin-top: 20px; font-weight: 700;" class="hidden"></div>
+        </div>
+
+        <!-- Dashboard Content -->
+        <div id="dashboard-content" class="hidden">
+            <div class="admin-nav">
+                <img src="./logo.svg" alt="SeenMyBus" class="brand-logo">
+                <button id="btn-logout" class="btn-logout">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    <span>Log Out</span>
+                </button>
+            </div>
+
+            <div class="dashboard-grid">
+                <!-- 1. Priority Assign -->
+                <div class="card">
+                    <div class="card-header">
+                        <svg class="ui-icon" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        <h3>Assign Slot Priority</h3>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Select Route Destination</label>
+                        <select id="adm-route" class="form-control">
+                            <option value="6|Adityapur">Route 6 - Adityapur</option>
+                            <option value="7|Mango chauk">Route 7 - Mango chauk</option>
+                            <option value="3|Bistupur">Route 3 - Bistupur</option>
+                            <option value="9|Dhatkidih">Route 9 - Dhatkidih</option>
+                            <option value="5|Telco Colony">Route 5 - Telco Colony</option>
+                            <option value="2|Lal Building">Route 2 - Lal Building</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Bus Number</label>
+                        <input type="text" id="adm-busno" class="form-control" placeholder="e.g. 22">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Select Parking Slot on Map</label>
+                        <div id="spot-selector-btn" class="form-control" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center;">
+                            <span id="spot-text-val">Tap to select map slot...</span>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                        </div>
+                        <input type="hidden" id="adm-spot" value="">
+                        
+                        <!-- Interactive Admin Map -->
+                        <div id="admin-map-wrapper" class="hidden">
+                            <div style="background: #F5F3FF; padding: 8px; text-align: center; font-size: 11px; font-weight: 700; color: #815FD7; border-bottom: 1.5px solid var(--form-border);">Pinch to Zoom, Double-Tap to Zoom/Reset</div>
+                            <div id="admin-map-container"></div>
+                        </div>
+                    </div>
+
+                    <button id="btn-adm-assign" class="btn-action">
+                        Override & Lock Slot
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    </button>
+                </div>
+
+                <!-- 2. Broadcast -->
+                <div class="card">
+                    <div class="card-header">
+                        <svg class="ui-icon" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                        <h3>Broadcast Notification</h3>
+                    </div>
+                    <div class="form-group">
+                        <label>Notification Title</label>
+                        <input type="text" id="adm-notif-title" class="form-control" placeholder="Campus Bus Alert">
+                    </div>
+                    <div class="form-group">
+                        <label>Notification Message</label>
+                        <textarea id="adm-notif-msg" class="form-control" rows="4" placeholder="Route 6 departing early from Slot 02 due to campus event..."></textarea>
+                    </div>
+                    <button id="btn-adm-send-notif" class="btn-action">
+                        Send Instant Push Alert
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                    </button>
+                </div>
+
+                <!-- 3. Live Fleet -->
+                <div class="card full-width">
+                    <div class="card-header">
+                        <svg class="ui-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                        <h3>Active Fleet Control</h3>
+                    </div>
+                    <div id="adm-active-list">
+                        <p style="font-size: 14px; font-weight: 500; color: #A78BFA; text-align: center; padding: 20px;">Fetching live fleet data...</p>
+                    </div>
+                </div>
+
+                <!-- 4. Purge -->
+                <div class="card full-width">
+                    <div class="card-header">
+                        <svg class="ui-icon" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        <h3>Shift Purge Engine</h3>
+                    </div>
+                    <p style="font-size: 13.5px; line-height: 1.5; color: var(--text-sub); margin-bottom: 20px;">Instantly clear all parking slots across campus and reset the map for the upcoming university departure shift.</p>
+                    <button id="btn-adm-purge-slots" class="btn-danger-action">Force Clear Entire Campus Map</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDK & Controller -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
+        import { getDatabase, ref, onValue, set, update } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCXejNb5wgmZ6KJ3Q4r4BhBqw9KPn7iX5I",
+            authDomain: "seenmybus.firebaseapp.com",
+            databaseURL: "https://seenmybus-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "seenmybus",
+            storageBucket: "seenmybus.firebasestorage.app",
+            messagingSenderId: "352466758419",
+            appId: "1:352466758419:web:b86ed30eff7223910688e6",
+            measurementId: "G-7RF7CK39M9"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getDatabase(app);
+        const provider = new GoogleAuthProvider();
+        const AUTHORIZED_ADMIN_EMAIL = "rahmansaif822@gmail.com";
+
+        // --- LAZY LOAD: Admin Map Initialization ---
+        let isAdminMapLoaded = false;
+
+        function initAdminMapSelector() {
+            document.getElementById('spot-selector-btn').onclick = () => {
+                const wrapper = document.getElementById('admin-map-wrapper');
+                wrapper.classList.toggle('hidden');
+
+                if (!isAdminMapLoaded) {
+                    const mapContainer = document.getElementById('admin-map-container');
+                    mapContainer.innerHTML = '<p style="text-align: center; color: #815FD7; padding: 40px 20px; font-size: 14px; font-weight: 600;">Loading Interactive Map...</p>';
+
+                    fetch('./ArkaJainUniversityBusMap.xml')
+                    .then(res => res.text())
+                    .then(svgText => {
+                        mapContainer.innerHTML = svgText;
+                        
+                        const adminMapElement = mapContainer.querySelector('svg');
+                        adminMapElement.style.width = '100%';
+                        adminMapElement.style.height = '100%';
+                        adminMapElement.style.transformOrigin = '0 0';
+                        
+                        const rootGroup = document.getElementById('campus-map-root');
+                        if (rootGroup) rootGroup.removeAttribute('clip-path');
+
+                        // Map Engine State
+                        let admScale = 1, admPointX = 0, admPointY = 0, admStartX = 0, admStartY = 0;
+                        let admIsPanning = false, admInitialPinchDist = null, admInitialScale = 1;
+                        let admLastTapTime = 0;
+
+                        function setAdmTransform() {
+                            const contW = mapContainer.clientWidth, contH = mapContainer.clientHeight;
+                            const scaledW = contW * admScale, scaledH = contH * admScale;
+                            admPointX = Math.min(0, Math.max(admPointX, contW - scaledW));
+                            admPointY = Math.min(0, Math.max(admPointY, contH - scaledH));
+                            adminMapElement.style.transform = `translate(${admPointX}px, ${admPointY}px) scale(${admScale})`;
+                        }
+
+                        // Drag & Zoom Listeners
+                        mapContainer.addEventListener('mousedown', e => { admIsPanning = true; admStartX = e.clientX - admPointX; admStartY = e.clientY - admPointY; });
+                        window.addEventListener('mousemove', e => { if (admIsPanning) { admPointX = e.clientX - admStartX; admPointY = e.clientY - admStartY; setAdmTransform(); } });
+                        window.addEventListener('mouseup', () => admIsPanning = false);
+                        window.addEventListener('mouseleave', () => admIsPanning = false);
+                        
+                        mapContainer.addEventListener('wheel', e => {
+                            e.preventDefault();
+                            const rect = mapContainer.getBoundingClientRect();
+                            const x = e.clientX - rect.left, y = e.clientY - rect.top;
+                            const xs = (x - admPointX) / admScale, ys = (y - admPointY) / admScale;
+                            admScale = Math.min(Math.max(1, -e.deltaY > 0 ? admScale * 1.15 : admScale / 1.15), 5);
+                            admPointX = x - xs * admScale; admPointY = y - ys * admScale; setAdmTransform();
+                        }, { passive: false });
+
+                        mapContainer.addEventListener('touchstart', e => {
+                            if (e.touches.length === 1) { admIsPanning = true; admStartX = e.touches[0].clientX - admPointX; admStartY = e.touches[0].clientY - admPointY; }
+                            else if (e.touches.length === 2) { admIsPanning = false; admInitialPinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); admInitialScale = admScale; }
+                        }, { passive: true });
+
+                        mapContainer.addEventListener('touchmove', e => {
+                            if (e.touches.length === 1 && admIsPanning) { admPointX = e.touches[0].clientX - admStartX; admPointY = e.touches[0].clientY - admStartY; setAdmTransform(); }
+                            else if (e.touches.length === 2 && admInitialPinchDist) { admScale = Math.min(Math.max(1, admInitialScale * (Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY) / admInitialPinchDist)), 5); setAdmTransform(); }
+                        }, { passive: true });
+
+                        // Double Tap to Zoom logic
+                        mapContainer.addEventListener('touchend', e => { 
+                            if (e.touches.length === 0) admIsPanning = false; 
+                            
+                            const currentTime = new Date().getTime();
+                            const tapLength = currentTime - admLastTapTime;
+                            if (tapLength < 300 && tapLength > 0) {
+                                let clientX, clientY;
+                                if(e.changedTouches && e.changedTouches.length > 0) {
+                                    clientX = e.changedTouches[0].clientX; clientY = e.changedTouches[0].clientY;
+                                } else return;
+                                
+                                const rect = mapContainer.getBoundingClientRect();
+                                const x = clientX - rect.left, y = clientY - rect.top;
+
+                                if (admScale < 3.5) {
+                                    const xs = (x - admPointX) / admScale, ys = (y - admPointY) / admScale;
+                                    admScale = 3.5; admPointX = x - xs * admScale; admPointY = y - ys * admScale;
+                                } else {
+                                    admScale = 1; admPointX = 0; admPointY = 0;
+                                }
+                                adminMapElement.style.transition = 'transform 0.3s ease';
+                                setAdmTransform();
+                                setTimeout(() => { if(adminMapElement) adminMapElement.style.transition = 'none'; }, 300);
+                                if (e.cancelable) e.preventDefault();
+                            }
+                            admLastTapTime = currentTime;
+                        });
+
+                        mapContainer.addEventListener('dblclick', e => {
+                            const rect = mapContainer.getBoundingClientRect();
+                            const x = e.clientX - rect.left, y = e.clientY - rect.top;
+                            if (admScale < 3.5) {
+                                const xs = (x - admPointX) / admScale, ys = (y - admPointY) / admScale;
+                                admScale = 3.5; admPointX = x - xs * admScale; admPointY = y - ys * admScale;
+                            } else {
+                                admScale = 1; admPointX = 0; admPointY = 0;
+                            }
+                            adminMapElement.style.transition = 'transform 0.3s ease';
+                            setAdmTransform();
+                            setTimeout(() => { if(adminMapElement) adminMapElement.style.transition = 'none'; }, 300);
+                        });
+
+                        // Spot interaction 
+                        // Spots maintain perfectly native size per the CSS file
+                        const allSpots = ["spot-01", "spot-02", "spot-03", "spot-04", "spot-05", "spot-06", "spot-07", "spot-08", "spot-09", "spot-10", "spot-11"];
+                        
+                        allSpots.forEach(spotId => {
+                            const g = document.getElementById(spotId);
+                            if (g) {
+                                g.style.cursor = 'pointer';
+                                g.style.opacity = '1';
+                                
+                                const handleSpotSelect = (e) => {
+                                    e.stopPropagation();
+                                    document.getElementById('adm-spot').value = spotId;
+                                    document.getElementById('spot-text-val').innerHTML = `<span style="color:#815FD7; font-weight:800;">${spotId.toUpperCase().replace('-',' ')} Selected</span>`;
+                                    
+                                    allSpots.forEach(s => {
+                                        const el = document.getElementById(s);
+                                        if(el) el.classList.remove('spot-highlight');
+                                    });
+                                    g.classList.add('spot-highlight');
+                                    
+                                    setTimeout(() => { document.getElementById('admin-map-wrapper').classList.add('hidden'); }, 300);
+                                };
+
+                                g.addEventListener('click', handleSpotSelect);
+                                g.addEventListener('touchend', (e) => { if(!admIsPanning) handleSpotSelect(e); });
+                            }
+                        });
+
+                        isAdminMapLoaded = true;
+                    });
+                }
+            };
+        }
+        initAdminMapSelector();
+
+        const authScreen = document.getElementById('auth-screen');
+        const dashboardContent = document.getElementById('dashboard-content');
+        const authErrorMsg = document.getElementById('auth-error-msg');
+
+        // Auth Gatekeeper - Secures Local Storage
+        onAuthStateChanged(auth, async (user) => {
+            if (user && user.email === AUTHORIZED_ADMIN_EMAIL) {
+                // Securely track authorized state inside local storage exclusively
+                localStorage.setItem('smb_admin_active', 'true');
+
+                authScreen.classList.add('hidden');
+                dashboardContent.classList.remove('hidden');
+                loadLiveFleet();
+            } else if (user) {
+                localStorage.removeItem('smb_admin_active');
+                authErrorMsg.textContent = `Access Denied: ${user.email} is not authorized.`;
+                authErrorMsg.classList.remove('hidden');
+                signOut(auth);
+            } else {
+                localStorage.removeItem('smb_admin_active');
+                authScreen.classList.remove('hidden');
+                dashboardContent.classList.add('hidden');
+            }
+        });
+
+        document.getElementById('btn-google-login').onclick = async () => {
+            try {
+                authErrorMsg.classList.add('hidden');
+                await signInWithPopup(auth, provider);
+            } catch (e) {
+                authErrorMsg.textContent = e.message;
+                authErrorMsg.classList.remove('hidden');
+            }
+        };
+
+        // Complete Logout: Clears Session -> Signs Out -> Triggers App Hidden State
+        document.getElementById('btn-logout').onclick = async () => {
+            localStorage.removeItem('smb_admin_active');
+            await signOut(auth);
+            window.location.href = './index.html';
+        };
+
+        // Submit Priority Assignment
+        document.getElementById('btn-adm-assign').onclick = async () => {
+            const routeRaw = document.getElementById('adm-route').value.split('|');
+            const busNo = document.getElementById('adm-busno').value.trim();
+            const spotId = document.getElementById('adm-spot').value;
+
+            if (!busNo) return alert("Please type a bus number.");
+            if (!spotId) return alert("Please tap the map below to select a slot first.");
+
+            const updates = {};
+            updates[`activeBuses/${spotId}`] = {
+                busNo: busNo,
+                busNos: [busNo],
+                routeNum: routeRaw[0],
+                name: routeRaw[1],
+                users: 999,
+                updatedAt: Date.now(),
+                updatedBy: 'ADMIN'
+            };
+
+            await update(ref(db), updates);
+            alert(`✅ Done! Bus ${busNo} locked to ${spotId.replace('-',' ')}.`);
+            
+            document.getElementById('adm-busno').value = '';
+            document.getElementById('adm-spot').value = '';
+            document.getElementById('spot-text-val').textContent = 'Tap to select map slot...';
+        };
+
+        // Broadcast Notifications
+        document.getElementById('btn-adm-send-notif').onclick = async () => {
+            const title = document.getElementById('adm-notif-title').value.trim() || "Campus Bus Alert";
+            const message = document.getElementById('adm-notif-msg').value.trim();
+            if (!message) return alert("Please type a notification message.");
+
+            await set(ref(db, `broadcastNotifications/${Date.now().toString()}`), {
+                title, message, createdAt: Date.now()
+            });
+
+            alert("🚀 Push notification broadcasted to all users!");
+            document.getElementById('adm-notif-msg').value = '';
+        };
+
+        // Live Fleet
+        function loadLiveFleet() {
+            onValue(ref(db, 'activeBuses'), (snap) => {
+                const data = snap.val() || {};
+                const listEl = document.getElementById('adm-active-list');
+                listEl.innerHTML = '';
+
+                const keys = Object.keys(data);
+                if (keys.length === 0) {
+                    listEl.innerHTML = `<p style="font-size: 14px; font-weight: 500; color: #A78BFA; text-align: center; padding: 20px;">No buses currently parked on map.</p>`;
+                    return;
+                }
+
+                keys.forEach(spotId => {
+                    const item = data[spotId];
+                    const buses = item.busNos ? item.busNos.join(', ') : item.busNo;
+                    const div = document.createElement('div');
+                    div.className = 'live-slot-item';
+                    div.innerHTML = `
+                        <div>
+                            <strong>${spotId.toUpperCase().replace('-',' ')} • Bus ${buses}</strong>
+                            <span>Route ${item.routeNum} (${item.name})</span>
+                        </div>
+                        <button class="btn-del-mini" onclick="window.removeSpot('${spotId}')">Mark Departed</button>
+                    `;
+                    listEl.appendChild(div);
+                });
+            });
+        }
+
+        window.removeSpot = async (spotId) => {
+            if (confirm(`Remove Bus from ${spotId}?`)) {
+                await set(ref(db, `activeBuses/${spotId}`), null);
+            }
+        };
+
+        // Emergency Purge
+        document.getElementById('btn-adm-purge-slots').onclick = async () => {
+            if (confirm("Are you entirely sure you want to clear ALL buses from the campus map?")) {
+                await set(ref(db, 'activeBuses'), null);
+                await set(ref(db, 'unassignedBuses'), null);
+                alert("Campus map completely purged!");
+            }
+        };
+    </script>
+</body>
+</html>
