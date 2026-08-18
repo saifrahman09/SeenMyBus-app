@@ -9,13 +9,11 @@
     <link rel="stylesheet" href="./map.css">
 </head>
 <body>
-    <!-- Preload Splash Screen -->
     <div id="splash-screen">
         <img src="./logo.svg" alt="SeenMyBus Logo" class="splash-logo">
     </div>
-
+    
     <div id="app-container">
-        <!-- First-Time Pinch Guide -->
         <div id="pinch-guide" class="hidden">
             <div class="guide-box">
                 <div class="pinch-anim-icon">
@@ -32,7 +30,6 @@
             </div>
         </div>
 
-        <!-- Privacy Consent -->
         <div id="consent-banner" class="hidden">
             <div class="consent-content">
                 <h4>Welcome to SeenMyBus</h4>
@@ -41,7 +38,6 @@
             </div>
         </div>
 
-        <!-- Notification Toast -->
         <div id="notif-banner" class="hidden">
             <div class="notif-content">
                 <h4>
@@ -56,22 +52,18 @@
             </div>
         </div>
 
-        <!-- Campus Map Area -->
         <main id="map-container"></main>
 
-        <!-- Top Search Bar & Controls -->
         <div class="top-bar">
             <div class="search-container">
                 <input type="text" id="search-input" placeholder='Search "bus 22" or "Adityapur"'>
             </div>
-            <!-- Admin Top Button (Revealed dynamically via Database Listener) -->
             <a href="./admin-dashboard.html" id="admin-top-btn" class="admin-top-btn hidden" title="Admin Portal" aria-label="Admin Portal">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                     <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                     <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
                 </svg>
             </a>
-            <!-- Hamburger Menu Button -->
             <div class="hamburger-btn" id="btn-hamburger">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
             </div>
@@ -81,19 +73,23 @@
         <div id="side-panel-overlay" class="hidden"></div>
         <div id="side-panel" class="side-panel">
             <div class="panel-header">
-                <!-- 50px Logo -->
                 <img src="./logo.svg" alt="SeenMyBus" class="brand-logo">
                 <button id="btn-close-panel" class="close-panel-btn" aria-label="Close">&times;</button>
             </div>
-
-            <!-- Contributor Widget -->
+            
             <div class="contributor-widget">
                 <div class="contributor-title">Monthly Contributor</div>
-                <div class="contributor-score" id="user-rank-display">Score: 0 pts • Level 1</div>
+                <div class="contributor-score" id="user-rank-display">Score: 0 pts   Level 1</div>
                 <div class="contributor-reset-hint">Resets on 5th of every month</div>
             </div>
 
-            <!-- Full Sidebar Navigation -->
+            <!-- New Friendly Developer Message -->
+            <div class="dev-message-card">
+                <strong>A note from the developer 👋</strong>
+                <p>This app runs entirely on our campus community's support. Even with smart algorithms, it can sometimes be wrong if the consensus is off.</p>
+                <p>Please use this app with a true heart. Give correct and active updates—because if you help others today, someone else will be there to help you when you desperately need your bus tomorrow. We're all in this together! ❤️</p>
+            </div>
+
             <div class="panel-links">
                 <a href="./faq.html">
                     <svg class="ui-icon ui-icon-inline" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></svg>
@@ -111,14 +107,12 @@
                     <svg class="ui-icon ui-icon-inline" viewBox="0 0 24 24"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z"/><path d="M6 6h10M6 10h10"/></svg>
                     Story Behind SeenMyBus
                 </a>
-
-                <!-- Secret Admin Portal Link (Revealed dynamically via Database Listener) -->
                 <a href="./admin-dashboard.html" id="admin-portal-link" class="admin-portal-link hidden">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                     Super Admin Portal
                 </a>
             </div>
-
+            
             <div class="side-panel-credit">Developed by Saif Rahman (Batch '28)</div>
             <div class="panel-footer">
                 <a href="./terms-and-conditions.html">Terms & Conditions</a>
@@ -143,12 +137,10 @@
             <div style="height: 100px;"></div> 
         </div>
 
-        <!-- Fixed Bottom Action Footer -->
         <div id="fixed-footer" class="sheet-footer">
             <button class="btn-primary" id="btn-update-bus">Update Bus Status</button>
         </div>
 
-        <!-- Selection Confirmation Footer -->
         <div id="selection-footer" class="sheet-footer hidden">
             <div id="step-3-summary" class="selection-summary"></div>
             <div style="display: flex; gap: 8px; width: 100%;">
@@ -171,7 +163,6 @@
                     </button>
                 </div>
 
-                <!-- PARK FLOW -->
                 <div id="flow-park">
                     <div id="step-1" class="step-container">
                         <label class="form-label">Select Route Destination</label>
@@ -186,12 +177,21 @@
                         <div id="bus-grid" class="bus-grid"></div>
                         <div class="modal-actions">
                             <button class="btn-secondary" id="btn-prev-2">Back</button>
-                            <button class="btn-primary" id="btn-next-2">Next: Choose Slot</button>
+                            <button class="btn-primary" id="btn-next-2">Next: Confirm</button>
+                        </div>
+                    </div>
+
+                    <div id="step-3-confirm" class="step-container hidden">
+                        <div id="step-3-confirm-summary" class="step-summary-badge"></div>
+                        <p class="section-subtext" style="margin-top: 15px; font-weight: 600; color: var(--text-black);">Has the bus number changed for this route, or is this an extra bus?</p>
+                        <div class="modal-actions" style="flex-direction: column; gap: 12px; margin-top: 12px;">
+                            <button class="btn-primary" id="btn-replace-yes" style="background: linear-gradient(180deg, #10b981 0%, #047857 100%);">Yes, Bus Number Changed</button>
+                            <button class="btn-primary" id="btn-replace-no" style="background: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%);">No, Additional Bus</button>
+                            <button class="btn-secondary" id="btn-prev-3-confirm" style="margin-top: 4px;">Back</button>
                         </div>
                     </div>
                 </div>
 
-                <!-- DEPARTURE FLOW -->
                 <div id="flow-depart" class="hidden">
                     <p class="section-subtext" style="margin-top: 4px;">Tap any bus below that has <strong>left campus</strong> to remove it instantly from the map:</p>
                     <div id="depart-bus-list" class="depart-list"></div>
@@ -201,7 +201,6 @@
             </div>
         </div>
     </div>
-
     <script type="module" src="./app.js"></script>
 </body>
 </html>
