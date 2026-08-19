@@ -1,4 +1,5 @@
-const CACHE_NAME = 'seenmybus-v1';
+const CACHE_NAME = 'seenmybus-v3';
+
 const STATIC_ASSETS = [
     './',
     './index.html',
@@ -18,6 +19,7 @@ self.addEventListener('install', (event) => {
             return cache.addAll(STATIC_ASSETS);
         })
     );
+
     self.skipWaiting();
 });
 
@@ -26,68 +28,147 @@ self.addEventListener('activate', (event) => {
     event.waitUntil(
         caches.keys().then((keys) => {
             return Promise.all(
-                keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+                keys
+                    .filter(
+                        (key) => key !== CACHE_NAME
+                    )
+                    .map(
+                        (key) =>
+                            caches.delete(key)
+                    )
             );
-        }).then(() => self.clients.claim())
+        }).then(() =>
+            self.clients.claim()
+        )
     );
 });
 
-// 3. Fetch - Cache-first for static files, bypass Firebase & WebSockets
+// 3. Fetch - Cache-first for static files,
+// bypass Firebase & WebSockets
 self.addEventListener('fetch', (event) => {
     const url = event.request.url;
 
     // Do not intercept Firebase or non-HTTP traffic
-    if (url.includes('firebaseio.com') || url.startsWith('chrome-extension') || event.request.method !== 'GET') {
+    if (
+        url.includes('firebaseio.com') ||
+        url.startsWith('chrome-extension') ||
+        event.request.method !== 'GET'
+    ) {
         return;
     }
 
     event.respondWith(
         fetch(event.request)
             .then((response) => {
+
                 // Update cache with fresh version if valid
-                if (response && response.status === 200 && response.type === 'basic') {
-                    const responseClone = response.clone();
-                    caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
+                if (
+                    response &&
+                    response.status === 200 &&
+                    response.type === 'basic'
+                ) {
+                    const responseClone =
+                        response.clone();
+
+                    caches.open(
+                        CACHE_NAME
+                    ).then(
+                        (cache) =>
+                            cache.put(
+                                event.request,
+                                responseClone
+                            )
+                    );
                 }
+
                 return response;
             })
-            .catch(() => caches.match(event.request))
+            .catch(() =>
+                caches.match(
+                    event.request
+                )
+            )
     );
 });
 
 // 4. Background Push Listener
-self.addEventListener('push', (event) => {
-    let data = { title: "Campus Bus Alert", message: "Bus status has been updated." };
-    if (event.data) {
-        try {
-            data = event.data.json();
-        } catch (e) {
-            data.message = event.data.text();
+self.addEventListener(
+    'push',
+    (event) => {
+
+        let data = {
+            title:
+                "Campus Bus Alert",
+
+            message:
+                "Bus status has been updated."
+        };
+
+        if (event.data) {
+            try {
+                data =
+                    event.data.json();
+            } catch (e) {
+                data.message =
+                    event.data.text();
+            }
         }
+
+        const options = {
+            body:
+                data.message ||
+                data.body,
+
+            icon:
+                './logo.svg',
+
+            badge:
+                './logo.svg',
+
+            vibrate:
+                [200, 100, 200],
+
+            data: {
+                url:
+                    './index.html'
+            }
+        };
+
+        event.waitUntil(
+            self.registration.showNotification(
+                data.title,
+                options
+            )
+        );
     }
-
-    const options = {
-        body: data.message || data.body,
-        icon: './logo.svg',
-        badge: './logo.svg',
-        vibrate: [200, 100, 200],
-        data: { url: './index.html' }
-    };
-
-    event.waitUntil(
-        self.registration.showNotification(data.title, options)
-    );
-});
+);
 
 // 5. Notification Tap Action
-self.addEventListener('notificationclick', (event) => {
-    event.notification.close();
-    event.waitUntil(
-        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientsArr) => {
-            if (clientsArr.length > 0) {
-                return clientsArr[0].focus();
-            }
-            return clients.openWindow('./index.html');
-        })
-    );
-});
+self.addEventListener(
+    'notificationclick',
+    (event) => {
+
+        event.notification.close();
+
+        event.waitUntil(
+            clients.matchAll({
+                type: 'window',
+                includeUncontrolled: true
+            }).then(
+                (clientsArr) => {
+
+                    if (
+                        clientsArr.length > 0
+                    ) {
+                        return clientsArr[0]
+                            .focus();
+                    }
+
+                    return clients.openWindow(
+                        './index.html'
+                    );
+                }
+            )
+        );
+    }
+);

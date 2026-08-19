@@ -32,6 +32,9 @@ let currentSearchQuery = '';
 let selectedRouteKey = null;
 let topRouteKey = null;
 let listOrderKeys = [];
+let lastActiveDataSignature = null;
+let lastUnassignedDataSignature = null;
+let mapViewportInitialized = false;
 
 // Ghost Click Protector
 window.ignoreMapTap = false; 
@@ -43,7 +46,14 @@ const allRoutes = [
     { num: "5", name: "Telco Colony" }, { num: "2", name: "Lal Building" }
 ];
 const allBuses = ["01", "02", "03", "04", "05", "10", "15", "19", "22", "25", "29", "30"];
-const allSpots = ["spot-01", "spot-02", "spot-03", "spot-04", "spot-05", "spot-06", "spot-07", "spot-08", "spot-09", "spot-10", "spot-11"];
+const allSpots = [
+    "spot-01", "spot-02", "spot-03", "spot-04", "spot-05",
+    "spot-06", "spot-07", "spot-08", "spot-09", "spot-10",
+    "spot-11", "spot-12", "spot-13", "spot-14", "spot-15",
+    "spot-16", "spot-17", "spot-18", "spot-19", "spot-20",
+    "spot-21", "spot-22", "spot-23", "spot-24", "spot-25",
+    "spot-26", "spot-27"
+];
 
 // --- 1. Background Service Worker Registration ---
 if ('serviceWorker' in navigator) {
@@ -369,7 +379,13 @@ fetch('./ArkaJainUniversityBusMap.xml')
                     mapElement.style.shapeRendering = 'geometricPrecision';
                     const rootGroup = document.getElementById('campus-map-root');
                     if (rootGroup) rootGroup.removeAttribute('clip-path');
-                    if (activeBuses.length > 0) renderMapSpots();
+                    renderMapSpots();
+                    requestAnimationFrame(() => {
+                        if (!mapViewportInitialized) {
+                            setDefaultMapViewport();
+                            mapViewportInitialized = true;
+                        }
+                    });
                 }
                 hideSplashScreen();
             });
@@ -388,48 +404,89 @@ function getFilteredBuses() {
 }
 
 // --- 13. Realtime & Auto-Refresh Syncing ---
+function createActiveDataSignature(data) {
+    if (!data) return '';
+    return Object.keys(data).sort().map(spotId => {
+        const item = data[spotId] || {};
+        const buses = item.busNos ? item.busNos : (item.busNo ? [item.busNo] : []);
+        return [
+            spotId,
+            item.routeNum || '',
+            item.name || '',
+            buses.join(','),
+            item.users ?? '',
+            item.updatedAt ?? '',
+            item.updatedBy ?? ''
+        ].join('~');
+    }).join('|');
+}
+
+function createUnassignedDataSignature(data) {
+    if (!data) return '';
+    return Object.keys(data).sort().map(spotId => {
+        const item = data[spotId] || {};
+        return `${spotId}~${item.busNo || ''}~${item.updatedAt ?? ''}~${item.updatedBy ?? ''}`;
+    }).join('|');
+}
+
 function handleBusesData(data) {
     const skeleton = document.getElementById('skeleton-loader');
     const busListEl = document.getElementById('bus-list');
     if (skeleton) skeleton.classList.add('hidden');
     if (busListEl) busListEl.classList.remove('hidden');
-    
+
     if (!data) {
+        if (lastActiveDataSignature === '') return;
+
+        lastActiveDataSignature = '';
         activeBuses = [];
         busLocationTracker = {};
         routeLocationTracker = {};
+
         if (mapElement && appState === 'VIEW') renderMapSpots();
         if (appState === 'VIEW') renderList([]);
         return;
     }
-    
+
     checkShiftPurge(data);
-    
+
+    const signature = createActiveDataSignature(data);
+    if (signature === lastActiveDataSignature) return;
+    lastActiveDataSignature = signature;
+
     const newActiveBuses = Object.keys(data).map(spotId => {
         const item = data[spotId];
         const buses = item.busNos ? item.busNos : (item.busNo ? [item.busNo] : []);
         return { spotId, ...item, busNos: buses };
     });
-    
+
     const newRouteLocationTracker = {};
-    
+
     newActiveBuses.forEach(ab => {
         ab.busNos.forEach(bNo => {
             let prevSpot = busLocationTracker[bNo];
-            if (!prevSpot && routeLocationTracker[ab.routeNum] && routeLocationTracker[ab.routeNum] !== ab.spotId) {
+
+            if (
+                !prevSpot &&
+                routeLocationTracker[ab.routeNum] &&
+                routeLocationTracker[ab.routeNum] !== ab.spotId
+            ) {
                 prevSpot = routeLocationTracker[ab.routeNum];
             }
+
             if (prevSpot && prevSpot !== ab.spotId) {
                 animateBusTransition(bNo, prevSpot, ab.spotId);
             }
+
             busLocationTracker[bNo] = ab.spotId;
         });
+
         newRouteLocationTracker[ab.routeNum] = ab.spotId;
     });
-    
+
     routeLocationTracker = newRouteLocationTracker;
     activeBuses = newActiveBuses;
-    
+
     if (appState === 'VIEW') {
         if (mapElement) renderMapSpots();
         renderList(getFilteredBuses());
@@ -437,7 +494,15 @@ function handleBusesData(data) {
 }
 
 function handleUnassignedData(data) {
-    unassignedBuses = data ? Object.keys(data).map(spotId => ({ spotId, ...data[spotId] })) : [];
+    const signature = createUnassignedDataSignature(data);
+    if (signature === lastUnassignedDataSignature) return;
+
+    lastUnassignedDataSignature = signature;
+
+    unassignedBuses = data
+        ? Object.keys(data).map(spotId => ({ spotId, ...data[spotId] }))
+        : [];
+
     if (appState === 'VIEW' && mapElement) renderMapSpots();
 }
 
@@ -465,71 +530,97 @@ function renderMapSpots() {
     allSpots.forEach(spotId => {
         const g = document.getElementById(spotId);
         if (!g) return;
+
         g.querySelectorAll('text.spot-text').forEach(t => t.remove());
-        g.className.baseVal = '';
+
+        g.classList.remove(
+            'spot-grey',
+            'spot-green',
+            'spot-yellow',
+            'spot-deep-green',
+            'spot-unassigned'
+        );
+
         g.onclick = null;
+        g.style.opacity = '1';
+        g.style.pointerEvents = 'all';
+        g.style.cursor = 'pointer';
+
         const busInfo = activeBuses.find(b => b.spotId === spotId);
         const unassignedInfo = unassignedBuses.find(b => b.spotId === spotId);
 
         if (appState === 'VIEW') {
             if (busInfo && busInfo.busNos.length > 0) {
-                g.style.opacity = '1';
                 g.classList.add('spot-yellow');
                 addTextToSpot(g, busInfo.busNos.join(','), 'text-black');
-                g.style.pointerEvents = 'all';
-                g.style.cursor = 'pointer';
-                g.onclick = (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (window.ignoreMapTap) return; 
-                    focusOnSpot(spotId);
-                    highlightInList(spotId, true); // true = called from map, moves to top
-                };
-            } else if (unassignedInfo) {
-                g.classList.add('spot-unassigned');
-                addTextToSpot(g, unassignedInfo.busNo, 'text-black');
-                g.style.pointerEvents = 'all';
-                g.style.cursor = 'pointer';
+
                 g.onclick = (e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     if (window.ignoreMapTap) return;
+
+                    focusOnSpot(spotId);
+                    highlightInList(spotId, true);
+                };
+            } else if (unassignedInfo) {
+                g.classList.add('spot-unassigned');
+                addTextToSpot(g, unassignedInfo.busNo, 'text-black');
+
+                g.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (window.ignoreMapTap) return;
+
                     focusOnSpot(spotId);
                 };
             } else {
-                g.style.opacity = '0';
-                g.style.pointerEvents = 'none';
+                g.classList.add('spot-grey');
+
+                g.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (window.ignoreMapTap) return;
+
+                    focusOnSpot(spotId);
+                };
             }
         } else if (appState === 'SELECTION') {
-            g.style.opacity = '1';
-            g.style.pointerEvents = 'all';
             if (busInfo && busInfo.busNos.length > 0) {
                 g.classList.add('spot-green');
                 addTextToSpot(g, busInfo.busNos.join(','), 'text-green');
             } else {
                 g.classList.add('spot-grey');
             }
+
             if (pendingUpdate.spotId === spotId) {
                 g.classList.remove('spot-grey', 'spot-green');
                 g.classList.add('spot-yellow');
                 addTextToSpot(g, pendingUpdate.busNo, 'text-black');
             }
+
             g.onclick = (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 if (window.ignoreMapTap) return;
                 
-                // --- STRICT 1-SLOT-1-BUS OWNERSHIP CHECK ---
                 if (busInfo) {
                     const existingRouteNum = busInfo.routeNum;
+
                     if (pendingUpdate.isReplacement) {
-                        if (pendingUpdate.route && existingRouteNum !== pendingUpdate.route.num) {
+                        if (
+                            pendingUpdate.route &&
+                            existingRouteNum !== pendingUpdate.route.num
+                        ) {
                             alert(`Slot occupied by Route ${existingRouteNum}. Please mark it departed first.`);
                             return;
                         }
                     } else {
                         const existingBuses = busInfo.busNos || [];
-                        if (existingBuses.length > 0 && !existingBuses.includes(pendingUpdate.busNo)) {
+
+                        if (
+                            existingBuses.length > 0 &&
+                            !existingBuses.includes(pendingUpdate.busNo)
+                        ) {
                             alert(`Slot is already occupied. A slot can only hold one bus at a time.`);
                             return;
                         }
@@ -547,7 +638,7 @@ function renderMapSpots() {
                 pendingUpdate.spotId = spotId;
                 if (busInfo) {
                     g.classList.add('spot-deep-green');
-                    const txt = g.querySelector('text');
+                    const txt = g.querySelector('text.spot-text');
                     if (txt) txt.classList.replace('text-green', 'text-white');
                 } else {
                     g.classList.add('spot-yellow');
@@ -599,64 +690,363 @@ if (dragHandle) {
     });
 }
 
-let scale = 1, pointX = 0, pointY = 0, startX = 0, startY = 0, isPanning = false, initialPinchDist = null, initialScale = 1;
+let scale = 1;
+let pointX = 0;
+let pointY = 0;
+let startX = 0;
+let startY = 0;
+let isPanning = false;
+let initialPinchDist = null;
+let initialScale = 1;
+let panPointerMoved = false;
+
+let transformFramePending = false;
+
+const DEFAULT_MAP_ZOOM = 1.95;
+const DEFAULT_MAP_CENTER_X = 735;
+const DEFAULT_MAP_CENTER_Y = 750;
 
 function applyBoundaries() {
     if (!mapContainer) return;
-    const contW = mapContainer.clientWidth, contH = mapContainer.clientHeight;
-    const scaledW = contW * scale, scaledH = contH * scale;
-    pointX = Math.min(0, Math.max(pointX, contW - scaledW));
-    pointY = Math.min(0, Math.max(pointY, contH - scaledH));
+
+    const contW = mapContainer.clientWidth;
+    const contH = mapContainer.clientHeight;
+
+    const scaledW = contW * scale;
+    const scaledH = contH * scale;
+
+    if (scaledW <= contW) {
+        pointX = (contW - scaledW) / 2;
+    } else {
+        pointX = Math.min(
+            0,
+            Math.max(pointX, contW - scaledW)
+        );
+    }
+
+    if (scaledH <= contH) {
+        pointY = (contH - scaledH) / 2;
+    } else {
+        pointY = Math.min(
+            0,
+            Math.max(pointY, contH - scaledH)
+        );
+    }
+}
+
+function writeTransform() {
+    transformFramePending = false;
+
+    if (!mapElement) return;
+
+    applyBoundaries();
+
+    mapElement.style.transform =
+    `translate(${pointX}px, ${pointY}px) scale(${scale})`;
+
+    if (mapContainer) {
+        if (scale >= 1.6) {
+            mapContainer.classList.add('is-zoomed-in');
+        } else {
+            mapContainer.classList.remove('is-zoomed-in');
+        }
+    }
 }
 
 function setTransform() {
-    if (!mapElement) return;
-    applyBoundaries();
-    mapElement.style.transform = `translate(${pointX}px, ${pointY}px) scale(${scale})`;
-    scale >= 1.6 ? mapContainer.classList.add('is-zoomed-in') : mapContainer.classList.remove('is-zoomed-in');
+    if (transformFramePending) return;
+
+    transformFramePending = true;
+    requestAnimationFrame(writeTransform);
+}
+
+function setDefaultMapViewport() {
+    if (!mapElement || !mapContainer) return;
+
+    const viewBox = mapElement.viewBox.baseVal;
+
+    const baseW = viewBox.width || 1265;
+    const baseH = viewBox.height || 1335;
+
+    const contW = mapContainer.clientWidth;
+    const contH = mapContainer.clientHeight;
+
+    const fitScale = Math.max(
+        contW / baseW,
+        contH / baseH
+    );
+
+    const renderedW = baseW * fitScale;
+    const renderedH = baseH * fitScale;
+
+    const offsetX = (renderedW - contW) / 2;
+    const offsetY = (renderedH - contH) / 2;
+
+    const targetPixelX =
+        (DEFAULT_MAP_CENTER_X * fitScale) - offsetX;
+
+    const targetPixelY =
+        (DEFAULT_MAP_CENTER_Y * fitScale) - offsetY;
+
+    scale = DEFAULT_MAP_ZOOM;
+
+    pointX =
+        (contW / 2) -
+        (targetPixelX * scale);
+
+    pointY =
+        (contH / 2) -
+        (targetPixelY * scale);
+
+    mapElement.style.transition = 'none';
+    setTransform();
+}
+
+function zoomMapAt(clientX, clientY, zoomFactor) {
+    if (!mapContainer || !mapElement) return;
+
+    const rect = mapContainer.getBoundingClientRect();
+
+    const localX = clientX - rect.left;
+    const localY = clientY - rect.top;
+
+    const oldScale = scale;
+
+    const newScale = Math.min(
+        5,
+        Math.max(1, oldScale * zoomFactor)
+    );
+
+    if (newScale === oldScale) return;
+
+    const mapX = (localX - pointX) / oldScale;
+    const mapY = (localY - pointY) / oldScale;
+
+    scale = newScale;
+
+    pointX = localX - (mapX * scale);
+    pointY = localY - (mapY * scale);
+
+    setTransform();
 }
 
 function resetFocus() {
     if (!mapElement || !mapContainer) return;
-    document.querySelectorAll('.active-target').forEach(el => el.classList.remove('active-target', 'pop-animate'));
-    document.querySelectorAll('.active-list-item').forEach(el => el.classList.remove('active-list-item'));
-    document.querySelectorAll('.flash-highlight').forEach(el => el.classList.remove('flash-highlight'));
-    scale = 1; pointX = 0; pointY = 0;
-    mapElement.style.transition = 'transform 0.4s ease';
+
+    document
+        .querySelectorAll('.active-target')
+        .forEach(el => el.classList.remove('active-target', 'pop-animate'));
+
+    document
+        .querySelectorAll('.active-list-item')
+        .forEach(el => el.classList.remove('active-list-item'));
+
+    document
+        .querySelectorAll('.flash-highlight')
+        .forEach(el => el.classList.remove('flash-highlight'));
+
+    scale = 1;
+    pointX = 0;
+    pointY = 0;
+
+    mapElement.style.transition = 'transform 0.35s ease';
+
     setTransform();
-    setTimeout(() => { if (mapElement) mapElement.style.transition = 'none'; }, 400);
-    
-    // Clear list selection/pinning when the map focus is explicitly reset.
+
+    setTimeout(() => {
+        if (mapElement) {
+            mapElement.style.transition = 'none';
+        }
+    }, 350);
+
     selectedRouteKey = null;
     topRouteKey = null;
 }
 
 if (mapContainer) {
-    mapContainer.addEventListener('mousedown', e => { isPanning = true; startX = e.clientX - pointX; startY = e.clientY - pointY; });
-    window.addEventListener('mousemove', e => { if (isPanning) { pointX = e.clientX - startX; pointY = e.clientY - startY; setTransform(); } });
-    window.addEventListener('mouseup', () => isPanning = false);
-    window.addEventListener('mouseleave', () => isPanning = false);
+    mapContainer.addEventListener('mousedown', e => {
+        if (e.button !== 0) return;
+
+        isPanning = true;
+        panPointerMoved = false;
+
+        startX = e.clientX - pointX;
+        startY = e.clientY - pointY;
+
+        mapContainer.style.cursor = 'grabbing';
+    });
+
+    window.addEventListener('mousemove', e => {
+        if (!isPanning) return;
+
+        const nextX = e.clientX - startX;
+        const nextY = e.clientY - startY;
+
+        if (
+            Math.abs(nextX - pointX) > 2 ||
+            Math.abs(nextY - pointY) > 2
+        ) {
+            panPointerMoved = true;
+        }
+
+        pointX = nextX;
+        pointY = nextY;
+
+        setTransform();
+    });
+
+    window.addEventListener('mouseup', () => {
+        if (!isPanning) return;
+
+        isPanning = false;
+
+        if (mapContainer) {
+            mapContainer.style.cursor = 'grab';
+        }
+    });
+
+    window.addEventListener('mouseleave', () => {
+        isPanning = false;
+
+        if (mapContainer) {
+            mapContainer.style.cursor = 'grab';
+        }
+    });
+
     mapContainer.addEventListener('wheel', e => {
         e.preventDefault();
-        const xs = (e.clientX - pointX) / scale, ys = (e.clientY - pointY) / scale;
-        scale = Math.min(Math.max(1, -e.deltaY > 0 ? scale * 1.15 : scale / 1.15), 5);
-        pointX = e.clientX - xs * scale; pointY = e.clientY - ys * scale; setTransform();
+
+        const factor =
+            e.deltaY < 0
+                ? 1.12
+                : (1 / 1.12);
+
+        zoomMapAt(
+            e.clientX,
+            e.clientY,
+            factor
+        );
     }, { passive: false });
+
     mapContainer.addEventListener('touchstart', e => {
-        if (e.touches.length === 1) { isPanning = true; startX = e.touches[0].clientX - pointX; startY = e.touches[0].clientY - pointY; }
-        else if (e.touches.length === 2) { isPanning = false; initialPinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); initialScale = scale; }
+        if (e.touches.length === 1) {
+            isPanning = true;
+            panPointerMoved = false;
+
+            startX =
+                e.touches[0].clientX - pointX;
+
+            startY =
+                e.touches[0].clientY - pointY;
+
+        } else if (e.touches.length === 2) {
+            isPanning = false;
+
+            initialPinchDist = Math.hypot(
+                e.touches[0].clientX -
+                e.touches[1].clientX,
+
+                e.touches[0].clientY -
+                e.touches[1].clientY
+            );
+
+            initialScale = scale;
+        }
     }, { passive: true });
+
     mapContainer.addEventListener('touchmove', e => {
-        if (e.touches.length === 1 && isPanning) { pointX = e.touches[0].clientX - startX; pointY = e.touches[0].clientY - startY; setTransform(); }
-        else if (e.touches.length === 2 && initialPinchDist) { scale = Math.min(Math.max(1, initialScale * (Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY) / initialPinchDist)), 5); setTransform(); }
-    }, { passive: true });
+        if (
+            e.touches.length === 1 &&
+            isPanning
+        ) {
+            e.preventDefault();
+
+            pointX =
+                e.touches[0].clientX -
+                startX;
+
+            pointY =
+                e.touches[0].clientY -
+                startY;
+
+            panPointerMoved = true;
+
+            setTransform();
+
+        } else if (
+            e.touches.length === 2 &&
+            initialPinchDist
+        ) {
+            e.preventDefault();
+
+            const currentDist = Math.hypot(
+                e.touches[0].clientX -
+                e.touches[1].clientX,
+
+                e.touches[0].clientY -
+                e.touches[1].clientY
+            );
+
+            const nextScale = Math.min(
+                5,
+                Math.max(
+                    1,
+                    initialScale *
+                    (currentDist / initialPinchDist)
+                )
+            );
+
+            const rect =
+                mapContainer.getBoundingClientRect();
+
+            const centerX =
+                ((e.touches[0].clientX +
+                  e.touches[1].clientX) / 2) -
+                rect.left;
+
+            const centerY =
+                ((e.touches[0].clientY +
+                  e.touches[1].clientY) / 2) -
+                rect.top;
+
+            const mapX =
+                (centerX - pointX) / scale;
+
+            const mapY =
+                (centerY - pointY) / scale;
+
+            scale = nextScale;
+
+            pointX =
+                centerX -
+                (mapX * scale);
+
+            pointY =
+                centerY -
+                (mapY * scale);
+
+            setTransform();
+        }
+    }, { passive: false });
+
     mapContainer.addEventListener('touchend', e => {
-        if (e.touches.length === 0) isPanning = false;
-    });
-    
-    mapContainer.addEventListener('click', (e) => {
-        if (window.ignoreMapTap) return; 
-        if (!e.target.closest('[id^="spot-"]')) resetFocus();
+        if (e.touches.length === 0) {
+            isPanning = false;
+            initialPinchDist = null;
+        }
+    }, { passive: true });
+
+    mapContainer.addEventListener('click', e => {
+        if (window.ignoreMapTap) return;
+
+        if (panPointerMoved) {
+            panPointerMoved = false;
+            return;
+        }
+
+        if (!e.target.closest('[id^="spot-"]')) {
+            resetFocus();
+        }
     });
 }
 
@@ -705,7 +1095,6 @@ function getGroupedRoutes(buses) {
         );
     });
 
-    // Keep the original/default route sorting as the baseline.
     return Object.values(routeMap).sort(
         (a, b) => parseInt(a.routeNum) - parseInt(b.routeNum)
     );
@@ -715,11 +1104,8 @@ function buildStableListOrder(groupedRoutes) {
     const defaultKeys = groupedRoutes.map(item => item.key);
     const availableKeys = new Set(defaultKeys);
 
-    // Remove routes that no longer exist from the remembered UI order.
     listOrderKeys = listOrderKeys.filter(key => availableKeys.has(key));
 
-    // Add genuinely new routes in their normal/default position without
-    // disturbing routes the user has already reordered.
     defaultKeys.forEach((key, defaultIndex) => {
         if (listOrderKeys.includes(key)) return;
 
@@ -736,8 +1122,6 @@ function buildStableListOrder(groupedRoutes) {
         listOrderKeys.splice(insertAt, 0, key);
     });
 
-    // A map-originated pin always wins and remains at the top on subsequent
-    // realtime refreshes until the map focus is explicitly reset.
     if (topRouteKey && availableKeys.has(topRouteKey)) {
         listOrderKeys = [
             topRouteKey,
@@ -746,6 +1130,7 @@ function buildStableListOrder(groupedRoutes) {
     }
 
     const routeMap = new Map(groupedRoutes.map(item => [item.key, item]));
+
     return listOrderKeys
         .map(key => routeMap.get(key))
         .filter(Boolean);
@@ -756,8 +1141,6 @@ function applyListSelection(container) {
 
     const items = container.querySelectorAll('.bus-item');
 
-    // Hard guarantee: every render/tap first clears both classes from every
-    // item, then applies the active state to exactly ONE route.
     items.forEach(item => {
         item.classList.remove('active-list-item', 'flash-highlight');
     });
@@ -777,10 +1160,8 @@ function selectListRoute(routeKey, spotId = null, fromMap = false) {
     const container = document.getElementById('bus-list');
     if (!container || !routeKey) return;
 
-    // The latest interaction ALWAYS replaces the previous selection.
     selectedRouteKey = routeKey;
 
-    // Only a map-originated interaction is allowed to change sorting.
     if (fromMap) {
         topRouteKey = routeKey;
 
@@ -788,18 +1169,17 @@ function selectListRoute(routeKey, spotId = null, fromMap = false) {
             .find(item => item.dataset.routeKey === routeKey);
 
         if (targetItem) {
-            // Move only this DOM node. No list rebuild is triggered here.
             container.prepend(targetItem);
+
             listOrderKeys = [
                 routeKey,
                 ...listOrderKeys.filter(key => key !== routeKey)
             ];
+
             container.scrollTop = 0;
         }
     }
 
-    // Apply the selection immediately. Previous item loses styling in the
-    // same synchronous operation, so rapid taps cannot leave two selected.
     applyListSelection(container);
 
     if (fromMap) {
@@ -811,9 +1191,8 @@ function selectListRoute(routeKey, spotId = null, fromMap = false) {
             targetItem.classList.add('flash-highlight');
 
             setTimeout(() => {
-                // Do not allow an old map animation to interfere with a newer
-                // selection made during the 600ms animation window.
                 if (selectedRouteKey !== routeKey) return;
+
                 targetItem.classList.remove('flash-highlight');
                 targetItem.classList.add('active-list-item');
             }, 600);
@@ -829,8 +1208,6 @@ function renderList(buses) {
     const emptyState = document.getElementById('empty-state');
 
     if (groupedRoutes.length === 0) {
-        // Keep selection/pinning state in memory. If realtime data returns,
-        // it can be restored without inventing a new order.
         listOrderKeys = [];
         container.innerHTML = '';
         if (emptyState) emptyState.classList.remove('hidden');
@@ -839,8 +1216,6 @@ function renderList(buses) {
 
     if (emptyState) emptyState.classList.add('hidden');
 
-    // This is the key difference from the old implementation:
-    // the current UI order is preserved across every Firebase refresh.
     const orderedRoutes = buildStableListOrder(groupedRoutes);
 
     container.innerHTML = '';
@@ -873,14 +1248,13 @@ function renderList(buses) {
             badge.className = 'bus-circle-badge';
             badge.textContent = bObj.busNo;
 
-            badge.addEventListener('click', (e) => {
+            badge.addEventListener('click', (e) => { 
                 e.preventDefault();
                 e.stopPropagation();
 
                 window.ignoreMapTap = true;
                 setTimeout(() => window.ignoreMapTap = false, 400);
 
-                // This badge is INSIDE the list, so it must NOT reorder.
                 focusOnSpot(bObj.spotId);
                 selectListRoute(item.key, bObj.spotId, false);
             });
@@ -895,8 +1269,7 @@ function renderList(buses) {
             window.ignoreMapTap = true;
             setTimeout(() => window.ignoreMapTap = false, 400);
 
-            if (item.buses.length > 0) {
-                // Normal list tap: focus/highlight only. NEVER reorder.
+            if (item.buses.length > 0) { 
                 focusOnSpot(item.buses[0].spotId);
                 selectListRoute(item.key, item.buses[0].spotId, false);
             }
@@ -905,7 +1278,6 @@ function renderList(buses) {
         container.appendChild(div);
     });
 
-    // Reapply exactly one active item after the realtime rebuild.
     applyListSelection(container);
 }
 
@@ -952,416 +1324,1075 @@ function focusOnSpot(spotId) {
         draggableSheet.style.transform = `translateY(${halfHeight}px)`;
     }
 
-    const cx = parseFloat(circle.getAttribute('cx')), cy = parseFloat(circle.getAttribute('cy'));
-    const contW = mapContainer.clientWidth, contH = mapContainer.clientHeight;
+    const cx = parseFloat(circle.getAttribute('cx'));
+    const cy = parseFloat(circle.getAttribute('cy'));
+    const contW = mapContainer.clientWidth;
+    const contH = mapContainer.clientHeight;
     
-    const baseW = 421, baseH = 667;
-    const scaleRatio = Math.max(contW / baseW, contH / baseH);
-    const svgActualW = baseW * scaleRatio, svgActualH = baseH * scaleRatio;
-    const offsetX = (svgActualW - contW) / 2, offsetY = (svgActualH - contH) / 2;
+    const viewBox = mapElement.viewBox.baseVal;
+    const baseW = viewBox.width;
+    const baseH = viewBox.height;
+
+    const scaleRatio = Math.max(
+        contW / baseW,
+        contH / baseH
+    );
+
+    const svgActualW = baseW * scaleRatio;
+    const svgActualH = baseH * scaleRatio;
+
+    const offsetX = (svgActualW - contW) / 2;
+    const offsetY = (svgActualH - contH) / 2;
+
     const busPixelX = (cx * scaleRatio) - offsetX;
     const busPixelY = (cy * scaleRatio) - offsetY;
     
     scale = 3.5;
-    pointX = (contW / 2) - (busPixelX * scale);
-    pointY = (contH * 0.28) - (busPixelY * scale); 
+
+    pointX =
+        (contW / 2) -
+        (busPixelX * scale);
+
+    pointY =
+        (contH * 0.28) -
+        (busPixelY * scale); 
     
-    mapElement.style.transition = 'transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)';
+    mapElement.style.transition =
+        'transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)';
+
     setTransform();
-    setTimeout(() => { if (mapElement) mapElement.style.transition = 'none'; }, 600);
-    document.querySelectorAll('.active-target').forEach(el => el.classList.remove('active-target', 'pop-animate'));
-    spotGroup.classList.add('active-target', 'pop-animate');
-    setTimeout(() => { if (spotGroup) spotGroup.classList.remove('pop-animate'); }, 500);
+
+    setTimeout(() => {
+        if (mapElement) {
+            mapElement.style.transition = 'none';
+        }
+    }, 600);
+
+    document
+        .querySelectorAll('.active-target')
+        .forEach(el => el.classList.remove(
+            'active-target',
+            'pop-animate'
+        ));
+
+    spotGroup.classList.add(
+        'active-target',
+        'pop-animate'
+    );
+
+    setTimeout(() => {
+        if (spotGroup) {
+            spotGroup.classList.remove('pop-animate');
+        }
+    }, 500);
 }
 
 // --- 17. Modal UI & Multi-Step Logic ---
 const modal = document.getElementById('modal-overlay');
-const tabPark = document.getElementById('tab-park'), tabDepart = document.getElementById('tab-depart');
-const flowPark = document.getElementById('flow-park'), flowDepart = document.getElementById('flow-depart');
-const s1 = document.getElementById('step-1'), s2 = document.getElementById('step-2'), s3Confirm = document.getElementById('step-3-confirm');
-const grid = document.getElementById('bus-grid'), departList = document.getElementById('depart-bus-list');
-const fixedFooter = document.getElementById('fixed-footer'), selFooter = document.getElementById('selection-footer');
+const tabPark = document.getElementById('tab-park');
+const tabDepart = document.getElementById('tab-depart');
+const flowPark = document.getElementById('flow-park');
+const flowDepart = document.getElementById('flow-depart');
+const s1 = document.getElementById('step-1');
+const s2 = document.getElementById('step-2');
+const s3Confirm = document.getElementById('step-3-confirm');
+const grid = document.getElementById('bus-grid');
+const departList = document.getElementById('depart-bus-list');
+const fixedFooter = document.getElementById('fixed-footer');
+const selFooter = document.getElementById('selection-footer');
 const topBar = document.querySelector('.top-bar');
 
 const rSelect = document.getElementById('route-select');
-if (rSelect) allRoutes.forEach(r => rSelect.innerHTML += `<option value="${r.num}">Route ${r.num} - ${r.name}</option>`);
+
+if (rSelect) {
+    allRoutes.forEach(r => {
+        rSelect.innerHTML +=
+            `<option value="${r.num}">Route ${r.num} - ${r.name}</option>`;
+    });
+}
 
 if (document.getElementById('btn-update-bus')) {
     document.getElementById('btn-update-bus').onclick = () => {
         if (modal) modal.classList.remove('hidden');
+
         switchTab('PARK');
+
         if (s1) s1.classList.remove('hidden'); 
         if (s2) s2.classList.add('hidden');
         if (s3Confirm) s3Confirm.classList.add('hidden');
-        pendingUpdate = { route: null, busNo: null, spotId: null, isReplacement: false };
+
+        pendingUpdate = {
+            route: null,
+            busNo: null,
+            spotId: null,
+            isReplacement: false
+        };
     };
 }
-if (document.getElementById('btn-close-modal')) document.getElementById('btn-close-modal').onclick = () => { if (modal) modal.classList.add('hidden'); };
+
+if (document.getElementById('btn-close-modal')) {
+    document.getElementById('btn-close-modal').onclick = () => {
+        if (modal) modal.classList.add('hidden');
+    };
+}
 
 function switchTab(mode) {
     if (mode === 'PARK') {
-        if (tabPark) tabPark.classList.add('active'); if (tabDepart) tabDepart.classList.remove('active');
-        if (flowPark) flowPark.classList.remove('hidden'); if (flowDepart) flowDepart.classList.add('hidden');
+        if (tabPark) tabPark.classList.add('active');
+        if (tabDepart) tabDepart.classList.remove('active');
+
+        if (flowPark) flowPark.classList.remove('hidden');
+        if (flowDepart) flowDepart.classList.add('hidden');
+
     } else {
-        if (tabDepart) tabDepart.classList.add('active'); if (tabPark) tabPark.classList.remove('active');
-        if (flowDepart) flowDepart.classList.remove('hidden'); if (flowPark) flowPark.classList.add('hidden');
+        if (tabDepart) tabDepart.classList.add('active');
+        if (tabPark) tabPark.classList.remove('active');
+
+        if (flowDepart) flowDepart.classList.remove('hidden');
+        if (flowPark) flowPark.classList.add('hidden');
+
         renderSimpleDepartList();
     }
 }
+
 if (tabPark) tabPark.onclick = () => switchTab('PARK');
 if (tabDepart) tabDepart.onclick = () => switchTab('DEPART');
 
 // --- 18. Departure Flow ---
 function renderSimpleDepartList() {
     if (!departList) return;
+
     departList.innerHTML = '';
+
     const activeList = [];
-    activeBuses.forEach(ab => ab.busNos.forEach(b => activeList.push({ busNo: b, label: `Route ${ab.routeNum} - ${ab.name}` })));
-    unassignedBuses.forEach(ub => activeList.push({ busNo: ub.busNo, label: "Unassigned Spot" }));
+
+    activeBuses.forEach(ab =>
+        ab.busNos.forEach(b =>
+            activeList.push({
+                busNo: b,
+                label: `Route ${ab.routeNum} - ${ab.name}`
+            })
+        )
+    );
+
+    unassignedBuses.forEach(ub =>
+        activeList.push({
+            busNo: ub.busNo,
+            label: "Unassigned Spot"
+        })
+    );
+
     if (activeList.length === 0) {
-        departList.innerHTML = `<p style="text-align: center; color: #727272; font-size: 13px; padding: 20px 0;">No active buses parked.</p>`;
+        departList.innerHTML =
+            `<p style="text-align:center;color:#727272;font-size:13px;padding:20px 0;">No active buses parked.</p>`;
         return;
     }
+
     activeList.forEach(item => {
         const card = document.createElement('div');
         card.className = 'depart-card';
+
         card.innerHTML = `
             <div>
                 <div class="depart-left-title">Bus #${item.busNo}</div>
                 <div class="depart-left-sub">${item.label}</div>
             </div>
+
             <div class="depart-action-pill">
-                <svg class="ui-icon-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <svg class="ui-icon-white"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.5">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
                 <span>Mark Departed</span>
             </div>
         `;
+
         card.onclick = () => {
             const targetBus = item.busNo;
-            if (modal) modal.classList.add('hidden');
+
+            if (modal) {
+                modal.classList.add('hidden');
+            }
+
             executeFastUnassign(targetBus);
         };
+
         departList.appendChild(card);
     });
 }
 
 async function executeFastUnassign(busNumber) {
     try {
-        const [snapActive, snapUn] = await Promise.all([ get(ref(db, 'activeBuses')), get(ref(db, 'unassignedBuses')) ]);
+        const [snapActive, snapUn] = await Promise.all([
+            get(ref(db, 'activeBuses')),
+            get(ref(db, 'unassignedBuses'))
+        ]);
+
         const valActive = snapActive.val() || {};
         const valUn = snapUn.val() || {};
-        
-        let activeUpdates = {}, unassignedUpdates = {};
+
+        let activeUpdates = {};
+        let unassignedUpdates = {};
 
         Object.keys(valActive).forEach(sId => {
-            let bList = valActive[sId].busNos || (valActive[sId].busNo ? [valActive[sId].busNo] : []);
+            let bList =
+                valActive[sId].busNos ||
+                (valActive[sId].busNo
+                    ? [valActive[sId].busNo]
+                    : []);
+
             if (bList.includes(busNumber)) {
                 bList = bList.filter(b => b !== busNumber);
-                if (bList.length === 0) activeUpdates[sId] = null;
-                else activeUpdates[`${sId}/busNos`] = bList;
+
+                if (bList.length === 0) {
+                    activeUpdates[sId] = null;
+                } else {
+                    activeUpdates[`${sId}/busNos`] = bList;
+                }
             }
         });
-        Object.keys(valUn).forEach(sId => { if (valUn[sId].busNo === busNumber) unassignedUpdates[sId] = null; });
-        
-        if (Object.keys(activeUpdates).length > 0) await update(ref(db, 'activeBuses'), activeUpdates);
-        if (Object.keys(unassignedUpdates).length > 0) await update(ref(db, 'unassignedBuses'), unassignedUpdates);
+
+        Object.keys(valUn).forEach(sId => {
+            if (valUn[sId].busNo === busNumber) {
+                unassignedUpdates[sId] = null;
+            }
+        });
+
+        if (Object.keys(activeUpdates).length > 0) {
+            await update(
+                ref(db, 'activeBuses'),
+                activeUpdates
+            );
+        }
+
+        if (Object.keys(unassignedUpdates).length > 0) {
+            await update(
+                ref(db, 'unassignedBuses'),
+                unassignedUpdates
+            );
+        }
+
         addContributionPoints(5);
-    } catch (e) { console.error("Fast depart error:", e); }
+
+    } catch (e) {
+        console.error(
+            "Fast depart error:",
+            e
+        );
+    }
 }
 
 // --- 19. Park Flow with Conditional Step 3 ---
 if (document.getElementById('btn-skip-route')) {
     document.getElementById('btn-skip-route').onclick = () => {
         pendingUpdate.route = null;
-        if (s1) s1.classList.add('hidden'); if (s2) s2.classList.remove('hidden');
-        if (document.getElementById('step-2-summary')) document.getElementById('step-2-summary').textContent = `Unassigned Buses`;
+
+        if (s1) s1.classList.add('hidden');
+        if (s2) s2.classList.remove('hidden');
+
+        if (document.getElementById('step-2-summary')) {
+            document.getElementById('step-2-summary').textContent =
+                `Unassigned Buses`;
+        }
+
         populateBusGrid(true);
     };
 }
+
 if (document.getElementById('btn-next-1')) {
     document.getElementById('btn-next-1').onclick = () => {
-        pendingUpdate.route = allRoutes.find(r => r.num === rSelect.value);
-        if (s1) s1.classList.add('hidden'); if (s2) s2.classList.remove('hidden');
-        if (document.getElementById('step-2-summary') && pendingUpdate.route) {
-            document.getElementById('step-2-summary').textContent = `Route ${pendingUpdate.route.num} - ${pendingUpdate.route.name}`;
+
+        pendingUpdate.route =
+            allRoutes.find(
+                r => r.num === rSelect.value
+            );
+
+        if (s1) s1.classList.add('hidden');
+        if (s2) s2.classList.remove('hidden');
+
+        if (
+            document.getElementById('step-2-summary') &&
+            pendingUpdate.route
+        ) {
+            document.getElementById('step-2-summary').textContent =
+                `Route ${pendingUpdate.route.num} - ${pendingUpdate.route.name}`;
         }
-        populateBusGrid(false); 
+
+        populateBusGrid(false);
     };
 }
 
 function populateBusGrid(isUnassignedMode) {
     if (!grid) return;
+
     grid.innerHTML = '';
-    const busesToShow = isUnassignedMode ? getUnassignedBusNumbers() : allBuses;
+
+    const busesToShow =
+        isUnassignedMode
+            ? getUnassignedBusNumbers()
+            : allBuses;
+
     if (busesToShow.length === 0) {
-        grid.innerHTML = `<p style="grid-column: 1/-1; text-align: center; color: #727272; font-size: 13px;">All buses parked.</p>`;
+        grid.innerHTML =
+            `<p style="grid-column:1/-1;text-align:center;color:#727272;font-size:13px;">All buses parked.</p>`;
+
         return;
     }
+
     busesToShow.forEach(bNo => {
-        const isActive = activeBuses.find(ab => ab.busNos.includes(bNo));
-        const isSpottedUnassigned = unassignedBuses.find(ub => ub.busNo === bNo);
-        const btn = document.createElement('div');
-        btn.className = `grid-bus ${isActive ? 'green' : 'grey'}`;
+        const isActive =
+            activeBuses.find(
+                ab => ab.busNos.includes(bNo)
+            );
+
+        const isSpottedUnassigned =
+            unassignedBuses.find(
+                ub => ub.busNo === bNo
+            );
+
+        const btn =
+            document.createElement('div');
+
+        btn.className =
+            `grid-bus ${isActive ? 'green' : 'grey'}`;
+
         btn.textContent = bNo;
+
         btn.onclick = () => {
-            grid.querySelectorAll('.grid-bus').forEach(el => el.classList.remove('yellow-active'));
+            grid
+                .querySelectorAll('.grid-bus')
+                .forEach(
+                    el =>
+                        el.classList.remove(
+                            'yellow-active'
+                        )
+                );
+
             btn.classList.add('yellow-active');
+
             pendingUpdate.busNo = bNo;
-            if (isSpottedUnassigned) pendingUpdate.spotId = isSpottedUnassigned.spotId;
-            else if (isActive) pendingUpdate.spotId = isActive.spotId;
+
+            if (isSpottedUnassigned) {
+                pendingUpdate.spotId =
+                    isSpottedUnassigned.spotId;
+
+            } else if (isActive) {
+                pendingUpdate.spotId =
+                    isActive.spotId;
+            }
         };
+
         grid.appendChild(btn);
     });
 }
 
-if (document.getElementById('btn-prev-2')) document.getElementById('btn-prev-2').onclick = () => { if (s2) s2.classList.add('hidden'); if (s1) s1.classList.remove('hidden'); };
+if (document.getElementById('btn-prev-2')) {
+    document.getElementById('btn-prev-2').onclick = () => {
+        if (s2) s2.classList.add('hidden');
+        if (s1) s1.classList.remove('hidden');
+    };
+}
 
 if (document.getElementById('btn-next-2')) {
     document.getElementById('btn-next-2').onclick = () => {
-        if (!pendingUpdate.busNo) return alert("Please select a bus number.");
-        
+        if (!pendingUpdate.busNo) {
+            return alert("Please select a bus number.");
+        }
+
         if (pendingUpdate.route) {
-            const activeRouteSpots = activeBuses.filter(ab => ab.routeNum === pendingUpdate.route.num);
+            const activeRouteSpots =
+                activeBuses.filter(
+                    ab =>
+                        ab.routeNum ===
+                        pendingUpdate.route.num
+                );
+
             let isDifferentBus = false;
-            
+
             if (activeRouteSpots.length > 0) {
-                const existingBusesForRoute = activeRouteSpots.flatMap(spot => spot.busNos);
-                if (existingBusesForRoute.length > 0 && !existingBusesForRoute.includes(pendingUpdate.busNo)) {
+                const existingBusesForRoute =
+                    activeRouteSpots.flatMap(
+                        spot => spot.busNos
+                    );
+
+                if (
+                    existingBusesForRoute.length > 0 &&
+                    !existingBusesForRoute.includes(
+                        pendingUpdate.busNo
+                    )
+                ) {
                     isDifferentBus = true;
                 }
             }
 
             if (isDifferentBus) {
-                if (s2) s2.classList.add('hidden');
-                if (s3Confirm) s3Confirm.classList.remove('hidden');
-                if (document.getElementById('step-3-confirm-summary')) {
-                    document.getElementById('step-3-confirm-summary').textContent = `Bus ${pendingUpdate.busNo} for Route ${pendingUpdate.route.num} - ${pendingUpdate.route.name}`;
+
+                if (s2) {
+                    s2.classList.add('hidden');
                 }
+
+                if (s3Confirm) {
+                    s3Confirm.classList.remove('hidden');
+                }
+
+                if (
+                    document.getElementById(
+                        'step-3-confirm-summary'
+                    )
+                ) {
+                    document.getElementById(
+                        'step-3-confirm-summary'
+                    ).textContent =
+                        `Bus ${pendingUpdate.busNo} for Route ${pendingUpdate.route.num} - ${pendingUpdate.route.name}`;
+                }
+
             } else {
-                goToMapSelection(false); 
+                goToMapSelection(false);
             }
+
         } else {
-            goToMapSelection(false); 
+            goToMapSelection(false);
         }
     };
 }
 
 if (document.getElementById('btn-prev-3-confirm')) {
     document.getElementById('btn-prev-3-confirm').onclick = () => {
-        if (s3Confirm) s3Confirm.classList.add('hidden');
-        if (s2) s2.classList.remove('hidden');
+        if (s3Confirm) {
+            s3Confirm.classList.add('hidden');
+        }
+
+        if (s2) {
+            s2.classList.remove('hidden');
+        }
     };
 }
 
-if (document.getElementById('btn-replace-yes')) document.getElementById('btn-replace-yes').onclick = () => goToMapSelection(true);
-if (document.getElementById('btn-replace-no')) document.getElementById('btn-replace-no').onclick = () => goToMapSelection(false);
+if (document.getElementById('btn-replace-yes')) {
+    document.getElementById('btn-replace-yes').onclick =
+        () => goToMapSelection(true);
+}
+
+if (document.getElementById('btn-replace-no')) {
+    document.getElementById('btn-replace-no').onclick =
+        () => goToMapSelection(false);
+}
 
 function goToMapSelection(isReplacement) {
-    pendingUpdate.isReplacement = isReplacement;
+
+    pendingUpdate.isReplacement =
+        isReplacement;
+
     appState = 'SELECTION';
-    
-    let summaryStr = pendingUpdate.route ? `(Route ${pendingUpdate.route.num})` : `(Unassigned Location)`;
-    let extraText = (!isReplacement && pendingUpdate.route) ? `<br><span style="font-size:11.5px; color:#64748b; font-weight:600; line-height:1.5; display:block; margin-top:6px;">You are selecting an additional bus for ${pendingUpdate.route.name}</span>` : '';
-    
-    if (document.getElementById('step-3-summary')) {
-        document.getElementById('step-3-summary').innerHTML = `Tap a slot on the map for <span style="color:#815FD7;">Bus ${pendingUpdate.busNo}</span> ${summaryStr}${extraText}`;
+
+    let summaryStr =
+        pendingUpdate.route
+            ? `(Route ${pendingUpdate.route.num})`
+            : `(Unassigned Location)`;
+
+    let extraText =
+        (!isReplacement && pendingUpdate.route)
+            ? `<br><span style="font-size:11.5px;color:#64748b;font-weight:600;line-height:1.5;display:block;margin-top:6px;">You are selecting an additional bus for ${pendingUpdate.route.name}</span>`
+            : '';
+
+    if (
+        document.getElementById(
+            'step-3-summary'
+        )
+    ) {
+        document.getElementById(
+            'step-3-summary'
+        ).innerHTML =
+            `Tap a slot on the map for <span style="color:#815FD7;">Bus ${pendingUpdate.busNo}</span> ${summaryStr}${extraText}`;
     }
-    
-    if (s3Confirm) s3Confirm.classList.add('hidden');
-    if (s2) s2.classList.add('hidden');
-    
-    if (modal) modal.classList.add('hidden');
-    if (fixedFooter) fixedFooter.classList.add('hidden');
-    if (draggableSheet) draggableSheet.style.transform = `translateY(150%)`; 
-    if (topBar) topBar.style.transform = `translateY(-150%)`; 
-    if (selFooter) selFooter.classList.remove('hidden');
-    
-    scale = 1.6; pointX = 0; pointY = 0; 
+
+    if (s3Confirm) {
+        s3Confirm.classList.add('hidden');
+    }
+
+    if (s2) {
+        s2.classList.add('hidden');
+    }
+
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+
+    if (fixedFooter) {
+        fixedFooter.classList.add('hidden');
+    }
+
+    if (draggableSheet) {
+        draggableSheet.style.transform =
+            `translateY(150%)`;
+    }
+
+    if (topBar) {
+        topBar.style.transform =
+            `translateY(-150%)`;
+    }
+
+    if (selFooter) {
+        selFooter.classList.remove('hidden');
+    }
+
+    scale = 1.6;
+    pointX = 0;
+    pointY = 0;
+
     if (mapElement) {
-        mapElement.style.transition = 'transform 0.4s'; 
-        setTransform(); 
-        setTimeout(() => { if (mapElement) mapElement.style.transition = 'none'; }, 400);
+        mapElement.style.transition =
+            'transform 0.4s';
+
+        setTransform();
+
+        setTimeout(() => {
+            if (mapElement) {
+                mapElement.style.transition = 'none';
+            }
+        }, 400);
     }
+
     renderMapSpots();
 }
 
 if (document.getElementById('btn-prev-3')) {
     document.getElementById('btn-prev-3').onclick = () => {
+
         appState = 'VIEW';
-        if (selFooter) selFooter.classList.add('hidden');
-        if (fixedFooter) fixedFooter.classList.remove('hidden');
-        if (draggableSheet) draggableSheet.style.transform = `translateY(${currentTranslate}px)`;
-        if (topBar) topBar.style.transform = `translateY(0)`;
-        if (modal) modal.classList.remove('hidden');
-        renderMapSpots(); 
+
+        if (selFooter) {
+            selFooter.classList.add('hidden');
+        }
+
+        if (fixedFooter) {
+            fixedFooter.classList.remove('hidden');
+        }
+
+        if (draggableSheet) {
+            draggableSheet.style.transform =
+                `translateY(${currentTranslate}px)`;
+        }
+
+        if (topBar) {
+            topBar.style.transform =
+                `translateY(0)`;
+        }
+
+        if (modal) {
+            modal.classList.remove('hidden');
+        }
+
+        renderMapSpots();
     };
 }
 
 // Strict 1-Vote-Per-Route Ledger Commit
 if (document.getElementById('btn-submit-update')) {
     document.getElementById('btn-submit-update').onclick = async () => {
-        if (!pendingUpdate.spotId) return alert("Tap a spot on the map!");
-        document.getElementById('btn-submit-update').disabled = true;
-        
-        const targetSpot = pendingUpdate.spotId;
-        const selectedBus = pendingUpdate.busNo;
-        const targetRoute = pendingUpdate.route;
-        
+        if (!pendingUpdate.spotId) {
+            return alert("Tap a spot on the map!");
+        }
+
+        document.getElementById(
+            'btn-submit-update'
+        ).disabled = true;
+
+        const targetSpot =
+            pendingUpdate.spotId;
+
+        const selectedBus =
+            pendingUpdate.busNo;
+
+        const targetRoute =
+            pendingUpdate.route;
+
         appState = 'VIEW';
-        if (selFooter) selFooter.classList.add('hidden'); 
-        if (fixedFooter) fixedFooter.classList.remove('hidden');
-        if (draggableSheet) draggableSheet.style.transform = `translateY(${currentTranslate}px)`; 
-        if (topBar) topBar.style.transform = `translateY(0)`;
+
+        if (selFooter) {
+            selFooter.classList.add('hidden');
+        }
+
+        if (fixedFooter) {
+            fixedFooter.classList.remove('hidden');
+        }
+
+        if (draggableSheet) {
+            draggableSheet.style.transform =
+                `translateY(${currentTranslate}px)`;
+        }
+
+        if (topBar) {
+            topBar.style.transform =
+                `translateY(0)`;
+        }
 
         try {
-            const [snapActive, snapUn] = await Promise.all([ get(ref(db, 'activeBuses')), get(ref(db, 'unassignedBuses')) ]);
-            const activeData = snapActive.val() || {};
-            const unData = snapUn.val() || {};
+
+            const [
+                snapActive,
+                snapUn
+            ] =
+                await Promise.all([
+                    get(ref(db, 'activeBuses')),
+                    get(ref(db, 'unassignedBuses'))
+                ]);
+
+            const activeData =
+                snapActive.val() || {};
+
+            const unData =
+                snapUn.val() || {};
+
             const updates = {};
+
             let notificationUpdates = {};
-            const timestamp = Date.now();
 
-            let routeOldBus = null;
-            let isNewRoute = true;
-            let oldSpotForSelectedBus = null;
-            
+            const timestamp =
+                Date.now();
+
+            let routeOldBus =
+                null;
+
+            let isNewRoute =
+                true;
+
+            let oldSpotForSelectedBus =
+                null;
+
             if (targetRoute) {
-                Object.keys(activeData).forEach(sId => {
-                    if (activeData[sId] && activeData[sId].routeNum === targetRoute.num) {
-                        isNewRoute = false;
-                        routeOldBus = (activeData[sId].busNos || [activeData[sId].busNo])[0];
+
+                Object.keys(activeData).forEach(
+                    sId => {
+
+                        if (
+                            activeData[sId] &&
+                            activeData[sId].routeNum ===
+                                targetRoute.num
+                        ) {
+
+                            isNewRoute = false;
+
+                            routeOldBus =
+                                (
+                                    activeData[sId]
+                                        .busNos ||
+                                    [
+                                        activeData[sId]
+                                            .busNo
+                                    ]
+                                )[0];
+                        }
                     }
-                });
+                );
             }
 
-            // --- STRICT SLOT OWNERSHIP BLOCK (Backend Verification) ---
+            // --- STRICT SLOT OWNERSHIP BLOCK ---
             if (activeData[targetSpot]) {
-                const existingRouteNum = activeData[targetSpot].routeNum;
-                if (targetRoute && existingRouteNum !== targetRoute.num) {
-                    alert(`Slot occupied by Route ${existingRouteNum}. Please mark it departed first.`);
-                    document.getElementById('btn-submit-update').disabled = false;
+
+                const existingRouteNum =
+                    activeData[targetSpot]
+                        .routeNum;
+
+                if (
+                    targetRoute &&
+                    existingRouteNum !==
+                        targetRoute.num
+                ) {
+
+                    alert(
+                        `Slot occupied by Route ${existingRouteNum}. Please mark it departed first.`
+                    );
+
+                    document.getElementById(
+                        'btn-submit-update'
+                    ).disabled = false;
+
                     return;
                 }
+
                 if (!targetRoute) {
-                    alert(`Slot occupied by Route ${existingRouteNum}. Please mark it departed first.`);
-                    document.getElementById('btn-submit-update').disabled = false;
+
+                    alert(
+                        `Slot occupied by Route ${existingRouteNum}. Please mark it departed first.`
+                    );
+
+                    document.getElementById(
+                        'btn-submit-update'
+                    ).disabled = false;
+
                     return;
                 }
             }
 
-            Object.keys(activeData).forEach(sId => {
-                let spotData = activeData[sId];
-                let bList = spotData.busNos || (spotData.busNo ? [spotData.busNo] : []);
-                let voters = spotData.votersLedger || {};
-                let modified = false;
+            Object.keys(activeData).forEach(
+                sId => {
 
-                if (spotData.users >= 999 && Object.keys(voters).length === 0) voters = { 'admin_locked': true };
+                    let spotData =
+                        activeData[sId];
 
-                // 1. Scrub selected bus from anywhere else globally
-                if (bList.includes(selectedBus)) {
-                    bList = bList.filter(b => b !== selectedBus);
-                    modified = true;
-                    if (voters[currentDeviceToken]) {
-                        delete voters[currentDeviceToken];
+                    let bList =
+                        spotData.busNos ||
+                        (
+                            spotData.busNo
+                                ? [spotData.busNo]
+                                : []
+                        );
+
+                    let voters =
+                        spotData.votersLedger ||
+                        {};
+
+                    let modified = false;
+
+                    if (
+                        spotData.users >= 999 &&
+                        Object.keys(voters).length === 0
+                    ) {
+                        voters = {
+                            'admin_locked': true
+                        };
+                    }
+
+                    // 1. Scrub selected bus from anywhere else globally
+                    if (
+                        bList.includes(
+                            selectedBus
+                        )
+                    ) {
+
+                        bList =
+                            bList.filter(
+                                b =>
+                                    b !== selectedBus
+                            );
+
+                        modified = true;
+
+                        if (
+                            voters[
+                                currentDeviceToken
+                            ]
+                        ) {
+                            delete voters[
+                                currentDeviceToken
+                            ];
+                        }
+                    }
+
+                    // 2. Replacing: clear previous buses
+                    if (
+                        targetRoute &&
+                        pendingUpdate.isReplacement &&
+                        spotData.routeNum ===
+                            targetRoute.num
+                    ) {
+
+                        bList = [];
+
+                        modified = true;
+
+                        if (
+                            voters[
+                                currentDeviceToken
+                            ]
+                        ) {
+                            delete voters[
+                                currentDeviceToken
+                            ];
+                        }
+
+                        if (
+                            sId !== targetSpot
+                        ) {
+
+                            busLocationTracker[
+                                selectedBus
+                            ] = sId;
+                        }
+                    }
+
+                    if (
+                        modified &&
+                        sId !== targetSpot
+                    ) {
+
+                        if (
+                            bList.length === 0 ||
+                            Object.keys(
+                                voters
+                            ).length === 0
+                        ) {
+
+                            updates[
+                                `activeBuses/${sId}`
+                            ] = null;
+
+                        } else {
+
+                            updates[
+                                `activeBuses/${sId}/busNos`
+                            ] = bList;
+
+                            updates[
+                                `activeBuses/${sId}/users`
+                            ] =
+                                spotData.users >= 999
+                                    ? 999
+                                    : Object.keys(
+                                        voters
+                                    ).length;
+
+                            updates[
+                                `activeBuses/${sId}/votersLedger`
+                            ] =
+                                voters;
+                        }
                     }
                 }
-
-                // 2. If Replacing, clear previous buses from this specific route's old spots
-                if (targetRoute && pendingUpdate.isReplacement && spotData.routeNum === targetRoute.num) {
-                    bList = []; 
-                    modified = true;
-                    if (voters[currentDeviceToken]) {
-                        delete voters[currentDeviceToken];
-                    }
-                    if (sId !== targetSpot) {
-                        busLocationTracker[selectedBus] = sId; 
-                    }
-                }
-
-                if (modified && sId !== targetSpot) {
-                    if (bList.length === 0 || Object.keys(voters).length === 0) {
-                        updates[`activeBuses/${sId}`] = null;
-                    } else {
-                        updates[`activeBuses/${sId}/busNos`] = bList;
-                        updates[`activeBuses/${sId}/users`] = spotData.users >= 999 ? 999 : Object.keys(voters).length;
-                        updates[`activeBuses/${sId}/votersLedger`] = voters;
-                    }
-                }
-            });
+            );
 
             // Scrub unassigned
-            Object.keys(unData).forEach(sId => { 
-                if (unData[sId].busNo === selectedBus) updates[`unassignedBuses/${sId}`] = null; 
-            });
+            Object.keys(unData).forEach(
+                sId => {
 
-            if (targetRoute) {
-                let existingBusesAtSpot = [];
-                let existingVoters = {};
-                
-                if (activeData[targetSpot]) {
-                    if (activeData[targetSpot].routeNum === targetRoute.num) {
-                        existingBusesAtSpot = activeData[targetSpot].busNos || [];
-                        if (pendingUpdate.isReplacement) existingBusesAtSpot = []; 
-                        
-                        existingVoters = activeData[targetSpot].votersLedger || {};
-                        if (activeData[targetSpot].users >= 999 && Object.keys(existingVoters).length === 0) {
-                            existingVoters = { 'admin_locked': true };
-                        }
-                    } else {
-                        existingBusesAtSpot = []; 
-                        existingVoters = {};
+                    if (
+                        unData[sId].busNo ===
+                        selectedBus
+                    ) {
+
+                        updates[
+                            `unassignedBuses/${sId}`
+                        ] = null;
                     }
                 }
-                
-                existingBusesAtSpot = existingBusesAtSpot.filter(b => b !== selectedBus);
-                existingBusesAtSpot.push(selectedBus);
-                
-                // Authorize new single vote for the current device token
-                existingVoters[currentDeviceToken] = true;
+            );
+
+            if (targetRoute) {
+
+                let existingBusesAtSpot =
+                    [];
+
+                let existingVoters =
+                    {};
+
+                if (
+                    activeData[targetSpot]
+                ) {
+
+                    if (
+                        activeData[targetSpot]
+                            .routeNum ===
+                            targetRoute.num
+                    ) {
+
+                        existingBusesAtSpot =
+                            activeData[targetSpot]
+                                .busNos || [];
+
+                        if (
+                            pendingUpdate
+                                .isReplacement
+                        ) {
+                            existingBusesAtSpot =
+                                [];
+                        }
+
+                        existingVoters =
+                            activeData[targetSpot]
+                                .votersLedger || {};
+
+                        if (
+                            activeData[targetSpot]
+                                .users >= 999 &&
+                            Object.keys(
+                                existingVoters
+                            ).length === 0
+                        ) {
+
+                            existingVoters = {
+                                'admin_locked': true
+                            };
+                        }
+
+                    } else {
+
+                        existingBusesAtSpot =
+                            [];
+
+                        existingVoters =
+                            {};
+                    }
+                }
+
+                existingBusesAtSpot =
+                    existingBusesAtSpot.filter(
+                        b => b !== selectedBus
+                    );
+
+                existingBusesAtSpot.push(
+                    selectedBus
+                );
+
+                existingVoters[
+                    currentDeviceToken
+                ] = true;
 
                 // Push Notification Logic
-                if (pendingUpdate.isReplacement && !isNewRoute && routeOldBus && routeOldBus !== selectedBus) {
-                    const notifId = Date.now().toString() + "_swap";
-                    const numVoters = existingVoters['admin_locked'] ? 999 : Object.keys(existingVoters).length;
-                    const consensusStr = numVoters === 1 ? " Reported by 1 user only, so can be wrong :((" : "";
-                    notificationUpdates[notifId] = {
-                        title: "🔄 Bus Swap Alert!",
-                        message: `The bus for ${targetRoute.name} may have been changed from ${routeOldBus} to ${selectedBus}.${consensusStr}`,
-                        createdAt: Date.now()
+                if (
+                    pendingUpdate
+                        .isReplacement &&
+                    !isNewRoute &&
+                    routeOldBus &&
+                    routeOldBus !==
+                        selectedBus
+                ) {
+
+                    const notifId =
+                        Date.now().toString() +
+                        "_swap";
+
+                    const numVoters =
+                        existingVoters[
+                            'admin_locked'
+                        ]
+                            ? 999
+                            : Object.keys(
+                                existingVoters
+                            ).length;
+
+                    const consensusStr =
+                        numVoters === 1
+                            ? " Reported by 1 user only, so can be wrong :(("
+                            : "";
+
+                    notificationUpdates[
+                        notifId
+                    ] = {
+                        title:
+                            "🔄 Bus Swap Alert!",
+
+                        message:
+                            `The bus for ${targetRoute.name} may have been changed from ${routeOldBus} to ${selectedBus}.${consensusStr}`,
+
+                        createdAt:
+                            Date.now()
                     };
-                } else if (oldSpotForSelectedBus && oldSpotForSelectedBus !== targetSpot) {
-                    const notifId = Date.now().toString() + "_move";
-                    notificationUpdates[notifId] = {
-                        title: "📍 Bus Relocated!",
-                        message: `Bus ${selectedBus} for ${targetRoute.name} moved to a new parking slot. Tap to find it!`,
-                        createdAt: Date.now()
+
+                } else if (
+                    oldSpotForSelectedBus &&
+                    oldSpotForSelectedBus !==
+                        targetSpot
+                ) {
+
+                    const notifId =
+                        Date.now().toString() +
+                        "_move";
+
+                    notificationUpdates[
+                        notifId
+                    ] = {
+                        title:
+                            "📍 Bus Relocated!",
+
+                        message:
+                            `Bus ${selectedBus} for ${targetRoute.name} moved to a new parking slot. Tap to find it!`,
+
+                        createdAt:
+                            Date.now()
                     };
                 }
 
-                updates[`activeBuses/${targetSpot}`] = {
-                    busNo: selectedBus, 
-                    busNos: existingBusesAtSpot,
-                    routeNum: targetRoute.num,
-                    name: targetRoute.name,
-                    users: existingVoters['admin_locked'] ? 999 : Object.keys(existingVoters).length,
-                    votersLedger: existingVoters,
-                    updatedAt: timestamp,
-                    updatedBy: currentDeviceToken
+                updates[
+                    `activeBuses/${targetSpot}`
+                ] = {
+
+                    busNo:
+                        selectedBus,
+
+                    busNos:
+                        existingBusesAtSpot,
+
+                    routeNum:
+                        targetRoute.num,
+
+                    name:
+                        targetRoute.name,
+
+                    users:
+                        existingVoters[
+                            'admin_locked'
+                        ]
+                            ? 999
+                            : Object.keys(
+                                existingVoters
+                            ).length,
+
+                    votersLedger:
+                        existingVoters,
+
+                    updatedAt:
+                        timestamp,
+
+                    updatedBy:
+                        currentDeviceToken
                 };
+
             } else {
-                updates[`unassignedBuses/${targetSpot}`] = {
-                    busNo: selectedBus,
-                    updatedAt: timestamp,
-                    updatedBy: currentDeviceToken
+
+                updates[
+                    `unassignedBuses/${targetSpot}`
+                ] = {
+
+                    busNo:
+                        selectedBus,
+
+                    updatedAt:
+                        timestamp,
+
+                    updatedBy:
+                        currentDeviceToken
                 };
             }
 
-            await update(ref(db), updates);
-            if (Object.keys(notificationUpdates).length > 0) await update(ref(db, 'broadcastNotifications'), notificationUpdates);
-            await addContributionPoints(10);
+            await update(
+                ref(db),
+                updates
+            );
+
+            if (
+                Object.keys(
+                    notificationUpdates
+                ).length > 0
+            ) {
+                await update(
+                    ref(
+                        db,
+                        'broadcastNotifications'
+                    ),
+                    notificationUpdates
+                );
+            }
+
+            await addContributionPoints(
+                10
+            );
+
         } catch (err) {
-            console.error("Sync error:", err);
+
+            console.error(
+                "Sync error:",
+                err
+            );
+
         } finally {
-            document.getElementById('btn-submit-update').disabled = false;
+
+            document.getElementById(
+                'btn-submit-update'
+            ).disabled = false;
         }
     };
 }
