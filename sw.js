@@ -1,8 +1,9 @@
-const CACHE_NAME = 'seenmybus-v3';
+const CACHE_NAME = 'seenmybus-v5';
 
 const STATIC_ASSETS = [
     './',
     './index.html',
+    './app.js',
     './main.css',
     './map.css',
     './logo.svg',
@@ -48,7 +49,6 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
     const url = event.request.url;
 
-    // Do not intercept Firebase or non-HTTP traffic
     if (
         url.includes('firebaseio.com') ||
         url.startsWith('chrome-extension') ||
@@ -61,7 +61,6 @@ self.addEventListener('fetch', (event) => {
         fetch(event.request)
             .then((response) => {
 
-                // Update cache with fresh version if valid
                 if (
                     response &&
                     response.status === 200 &&
@@ -114,10 +113,15 @@ self.addEventListener(
             }
         }
 
+        const createdAt =
+            Number(data.createdAt) ||
+            Date.now();
+
         const options = {
             body:
                 data.message ||
-                data.body,
+                data.body ||
+                "",
 
             icon:
                 './logo.svg',
@@ -125,12 +129,24 @@ self.addEventListener(
             badge:
                 './logo.svg',
 
-            vibrate:
-                [200, 100, 200],
+            tag:
+                'seenmybus-broadcast',
+
+            renotify:
+                false,
+
+            requireInteraction:
+                false,
+
+            timestamp:
+                createdAt,
 
             data: {
                 url:
-                    './index.html'
+                    './index.html',
+
+                createdAt:
+                    createdAt
             }
         };
 
