@@ -1386,7 +1386,7 @@ function focusOnSpot(spotId) {
         (busPixelX * scale);
 
     pointY =
-        (contH * 0.40) -
+        (contH * 0.45) -
         (busPixelY * scale); 
     
     mapElement.style.transition =
@@ -1449,6 +1449,10 @@ const topBar = document.querySelector('.top-bar');
 const rSelect = document.getElementById('route-select');
 
 if (rSelect) {
+    rSelect.innerHTML = `
+        <option value="" disabled selected>Select route destination...</option>
+        <option value="UNASSIGNED">Route Not Confirmed</option>
+    `;
     allRoutes.forEach(r => {
         rSelect.innerHTML +=
             `<option value="${r.num}">Route ${r.num} - ${r.name}</option>`;
@@ -1648,24 +1652,32 @@ if (document.getElementById('btn-skip-route')) {
 
 if (document.getElementById('btn-next-1')) {
     document.getElementById('btn-next-1').onclick = () => {
-
-        pendingUpdate.route =
-            allRoutes.find(
-                r => r.num === rSelect.value
-            );
-
-        if (s1) s1.classList.add('hidden');
-        if (s2) s2.classList.remove('hidden');
-
-        if (
-            document.getElementById('step-2-summary') &&
-            pendingUpdate.route
-        ) {
-            document.getElementById('step-2-summary').textContent =
-                `Route ${pendingUpdate.route.num} - ${pendingUpdate.route.name}`;
+        const selectedVal = rSelect.value;
+        
+        if (!selectedVal) {
+            return alert("Please select a route destination.");
         }
 
-        populateBusGrid(false);
+        if (selectedVal === "UNASSIGNED") {
+            pendingUpdate.route = null;
+            if (s1) s1.classList.add('hidden');
+            if (s2) s2.classList.remove('hidden');
+
+            if (document.getElementById('step-2-summary')) {
+                document.getElementById('step-2-summary').textContent = `Route Not Confirmed`;
+            }
+            populateBusGrid(true); // Loads unassigned bus numbers only
+        } else {
+            pendingUpdate.route = allRoutes.find(r => r.num === selectedVal);
+            if (s1) s1.classList.add('hidden');
+            if (s2) s2.classList.remove('hidden');
+
+            if (document.getElementById('step-2-summary') && pendingUpdate.route) {
+                document.getElementById('step-2-summary').textContent =
+                    `Route ${pendingUpdate.route.num} - ${pendingUpdate.route.name}`;
+            }
+            populateBusGrid(false); // Loads all buses for assignment
+        }
     };
 }
 
