@@ -1420,10 +1420,6 @@ function focusOnSpot(spotId) {
         const activeBusInfo = activeBuses.find(b => b.spotId === spotId);
         
         if (activeBusInfo && appState === 'VIEW') {
-            // --- DIAGNOSTIC ALERT ---
-            const bubbleExists = !!document.getElementById('bus-validation-bubble');
-            alert("Phone Check! Does the HTML card exist in memory? " + bubbleExists);
-            
             showValidationCard(activeBusInfo);
         } else {
             hideValidationCard();
