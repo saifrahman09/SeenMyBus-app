@@ -232,7 +232,7 @@ function sendLocalNotification(title, body) {
         tag: "aju-bus-alert", // Groups alerts so they replace each other instead of spamming 100 separate alerts
         renotify: true,
         actions: [
-            { action: 'open_map', title: '🗺️ See Map' },
+            { action: 'open_map', title: 'See on App' },
             { action: 'dismiss', title: 'Dismiss' }
         ]
     };
@@ -1411,11 +1411,15 @@ function focusOnSpot(spotId) {
     }, 500);
 
     // --- ADDED FOR VALIDATION CARD ---
+    // --- PRODUCTION VALIDATION CARD TRIGGER ---
     if (typeof showValidationCard === 'function') {
+        // Find the bus ONLY if it is an active, routed bus
         const activeBusInfo = activeBuses.find(b => b.spotId === spotId);
+        
         if (activeBusInfo && appState === 'VIEW') {
             showValidationCard(activeBusInfo);
         } else {
+            // Hides the card if you tap empty space or an unassigned bus
             hideValidationCard();
         }
     }
@@ -2459,9 +2463,10 @@ function showValidationCard(busInfo) {
     const isAuthor = (busInfo.updatedBy === currentDeviceToken || busInfo.updatedBy === ('ADMIN_' + currentDeviceToken));
     const hasVoted = voters[currentDeviceToken] === true;
 
+    // Temporarily comment out the 'return;' below if you want to test on your own screen
     if (isAuthor || hasVoted) {
         hideValidationCard();
-        return; // Exits immediately, bubble stays completely hidden until new update
+        return; 
     }
 
     // --- FUNCTIONAL REQ 4: Auto-expand for newly tapped buses ---
@@ -2469,7 +2474,9 @@ function showValidationCard(busInfo) {
         isValidationCardCollapsed = false; 
     }
 
+    // --- CRITICAL FIX: Save the bus data so the YES/NO buttons work! ---
     currentValidationBus = busInfo;
+
     const busDisplay = busInfo.busNos ? busInfo.busNos.join(', ') : busInfo.busNo;
     
     // --- UI REQ 2: Updated description text format (Uses Destination Name) ---
