@@ -88,8 +88,8 @@ body, html {
 .admin-top-btn:active { transform: scale(0.92); }
 .hamburger-btn { width: 50px; height: 50px; flex-shrink: 0; border-radius: 50%; background-color: var(--bus-yellow); border: 1px solid var(--bus-stroke); display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15); cursor: pointer; color: var(--text-black); }
 
-#side-panel-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.4); z-index: 1999; }
-.side-panel { position: absolute; top: 0; right: -300px; width: 270px; bottom: 0; background: white; z-index: 2000; box-shadow: -5px 0 25px rgba(0, 0, 0, 0.15); display: flex; flex-direction: column; transition: right 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); overflow-y: auto; }
+#side-panel-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.4); z-index: 99998; }
+.side-panel { position: absolute; top: 0; right: -300px; width: 270px; bottom: 0; background: white; z-index: 99999; box-shadow: -5px 0 25px rgba(0, 0, 0, 0.15); display: flex; flex-direction: column; transition: right 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); overflow-y: auto; }
 .side-panel.open { right: 0; }
 .panel-header { padding: 20px 20px 14px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f0f0f0; }
 .brand-logo { height: 50px; width: auto; max-width: 170px; object-fit: contain; display: block; }
