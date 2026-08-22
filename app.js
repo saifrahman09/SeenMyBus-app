@@ -1417,13 +1417,15 @@ function focusOnSpot(spotId) {
     // --- ADDED FOR VALIDATION CARD ---
     // --- PRODUCTION VALIDATION CARD TRIGGER ---
     if (typeof showValidationCard === 'function') {
-        // Find the bus ONLY if it is an active, routed bus
         const activeBusInfo = activeBuses.find(b => b.spotId === spotId);
         
         if (activeBusInfo && appState === 'VIEW') {
+            // --- DIAGNOSTIC ALERT ---
+            const bubbleExists = !!document.getElementById('bus-validation-bubble');
+            alert("Phone Check! Does the HTML card exist in memory? " + bubbleExists);
+            
             showValidationCard(activeBusInfo);
         } else {
-            // Hides the card if you tap empty space or an unassigned bus
             hideValidationCard();
         }
     }
