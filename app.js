@@ -1382,7 +1382,7 @@ function focusOnSpot(spotId) {
         (busPixelX * scale);
 
     pointY =
-        (contH * 0.28) -
+        (contH * 0.40) -
         (busPixelY * scale); 
     
     mapElement.style.transition =
