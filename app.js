@@ -56,8 +56,12 @@ const allSpots = [
 ];
 
 // --- 1. Background Service Worker Registration ---
+// --- 1. Background Service Worker Registration & Cache Nuke ---
 if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(err => console.log("SW Registration bypassed:", err));
+    navigator.serviceWorker.register('./sw.js').then(registration => {
+        // Force the browser to check for sw.js updates every time the page loads
+        registration.update();
+    }).catch(err => console.log("SW Registration bypassed:", err));
 }
 
 // --- 2. Admin Visibility Check ---
