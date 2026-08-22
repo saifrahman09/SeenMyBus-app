@@ -576,6 +576,8 @@ function renderMapSpots() {
             if (busInfo && busInfo.busNos.length > 0) {
                 g.classList.add('spot-yellow');
                 addTextToSpot(g, busInfo.busNos.join(','), 'text-black');
+                g.style.opacity = '1';
+                g.style.pointerEvents = 'all';
 
                 g.onclick = (e) => {
                     e.preventDefault();
@@ -588,6 +590,8 @@ function renderMapSpots() {
             } else if (unassignedInfo) {
                 g.classList.add('spot-unassigned');
                 addTextToSpot(g, unassignedInfo.busNo, 'text-black');
+                g.style.opacity = '1';
+                g.style.pointerEvents = 'all';
 
                 g.onclick = (e) => {
                     e.preventDefault();
@@ -597,17 +601,17 @@ function renderMapSpots() {
                     focusOnSpot(spotId);
                 };
             } else {
+                // HIDE EMPTY SPOTS IN NORMAL VIEW
                 g.classList.add('spot-grey');
-
-                g.onclick = (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (window.ignoreMapTap) return;
-
-                    focusOnSpot(spotId);
-                };
+                g.style.opacity = '0';
+                g.style.pointerEvents = 'none';
+                g.onclick = null;
             }
         } else if (appState === 'SELECTION') {
+            // SHOW ALL SPOTS DURING FORM SELECTION
+            g.style.opacity = '1';
+            g.style.pointerEvents = 'all';
+
             if (busInfo && busInfo.busNos.length > 0) {
                 g.classList.add('spot-green');
                 addTextToSpot(g, busInfo.busNos.join(','), 'text-green');
