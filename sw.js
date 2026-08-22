@@ -188,3 +188,29 @@ self.addEventListener(
         );
     }
 );
+
+// Listen for clicks on the push notifications
+self.addEventListener('notificationclick', function(event) {
+    event.notification.close();
+
+    // If the user clicked "Dismiss", do nothing
+    if (event.action === 'dismiss') {
+        return;
+    }
+
+    // If they clicked "See Map" or tapped the main notification body, focus/open the app
+    event.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+            for (let i = 0; i < clientList.length; i++) {
+                let client = clientList[i];
+                if (client.url.includes('index.html') && 'focus' in client) {
+                    return client.focus();
+                }
+            }
+            if (clients.openWindow) {
+                return clients.openWindow('./index.html');
+            }
+        })
+    );
+});
+

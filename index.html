@@ -54,6 +54,44 @@
 
         <main id="map-container"></main>
 
+        <!-- Real-Time Bus Validation Floating Card -->
+        <div id="bus-validation-bubble" class="validation-bubble hidden">
+          
+          <!-- Collapsed State: Expand Icon -->
+          <button id="val-fab" class="val-fab" aria-label="Verify Bus">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="15 3 21 3 21 9"></polyline>
+              <polyline points="9 21 3 21 3 15"></polyline>
+              <line x1="21" y1="3" x2="14" y2="10"></line>
+              <line x1="3" y1="21" x2="10" y2="14"></line>
+            </svg>
+          </button>
+
+          <!-- Expanded State -->
+          <div id="val-card" class="val-card hidden">
+            <div class="val-card-header">
+              <span class="val-heading">Is it correct?</span>
+              <button id="val-btn-collapse" class="val-collapse-btn" aria-label="Collapse">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="4 14 10 14 10 20"></polyline>
+                  <polyline points="20 10 14 10 14 4"></polyline>
+                  <line x1="14" y1="10" x2="21" y2="3"></line>
+                  <line x1="3" y1="21" x2="10" y2="14"></line>
+                </svg>
+              </button>
+            </div>
+
+            <div id="val-bus-details" class="val-details">
+              <!-- Dynamic text injected via JS -->
+            </div>
+
+            <div class="val-actions">
+              <button id="btn-val-yes" class="btn-val btn-val-yes">Yes</button>
+              <button id="btn-val-no" class="btn-val btn-val-no">No</button>
+            </div>
+          </div>
+        </div>
+
         <div class="top-bar">
             <div class="search-container">
                 <input type="text" id="search-input" placeholder='Search "bus 22" or "Adityapur"'>

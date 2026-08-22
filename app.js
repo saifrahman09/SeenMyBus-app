@@ -222,12 +222,31 @@ function initNotificationSystem() {
 
 function sendLocalNotification(title, body) {
     if (!("Notification" in window) || Notification.permission !== "granted") return;
+
+    // Professional notification configuration to prevent spam flagging
+    const notifOptions = {
+        body: body,
+        icon: "./logo.svg",
+        badge: "./logo.svg", // Shows official white/transparent icon in Android status bar
+        vibrate: [200, 100, 200, 100, 200],
+        tag: "aju-bus-alert", // Groups alerts so they replace each other instead of spamming 100 separate alerts
+        renotify: true,
+        actions: [
+            { action: 'open_map', title: '🗺️ See Map' },
+            { action: 'dismiss', title: 'Dismiss' }
+        ]
+    };
+
     if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
         navigator.serviceWorker.ready.then(registration => {
-            registration.showNotification(title, { body: body, icon: "./logo.svg", vibrate: [200, 100, 200] });
+            registration.showNotification(title, notifOptions);
         });
     } else {
-        new Notification(title, { body: body, icon: "./logo.svg" });
+        const notif = new Notification(title, notifOptions);
+        notif.onclick = function() {
+            window.focus();
+            this.close();
+        };
     }
 }
 
@@ -861,6 +880,11 @@ function resetFocus() {
 
     selectedRouteKey = null;
     topRouteKey = null;
+
+    // --- ADDED FOR VALIDATION CARD ---
+    if (typeof hideValidationCard === 'function') {
+        hideValidationCard();
+    }
 }
 
 if (mapContainer) {
@@ -1385,6 +1409,16 @@ function focusOnSpot(spotId) {
             spotGroup.classList.remove('pop-animate');
         }
     }, 500);
+
+    // --- ADDED FOR VALIDATION CARD ---
+    if (typeof showValidationCard === 'function') {
+        const activeBusInfo = activeBuses.find(b => b.spotId === spotId);
+        if (activeBusInfo && appState === 'VIEW') {
+            showValidationCard(activeBusInfo);
+        } else {
+            hideValidationCard();
+        }
+    }
 }
 
 // --- 17. Modal UI & Multi-Step Logic ---
@@ -2393,6 +2427,170 @@ if (document.getElementById('btn-submit-update')) {
             document.getElementById(
                 'btn-submit-update'
             ).disabled = false;
+        }
+    };
+}
+
+// --- 20. Real-Time Bus Validation System ---
+
+const valBubble = document.getElementById('bus-validation-bubble');
+const valFab = document.getElementById('val-fab');
+const valCard = document.getElementById('val-card');
+const valBusDetails = document.getElementById('val-bus-details');
+const btnValYes = document.getElementById('btn-val-yes');
+const btnValNo = document.getElementById('btn-val-no');
+const btnValCollapse = document.getElementById('val-btn-collapse');
+
+let currentValidationBus = null;
+let isValidationCardCollapsed = false;
+
+// Stop map gestures from triggering while interacting with the card
+if (valBubble) {
+    ['touchstart', 'touchmove', 'touchend', 'mousedown', 'mousemove', 'mouseup', 'click', 'wheel'].forEach(evt => {
+        valBubble.addEventListener(evt, (e) => e.stopPropagation(), { passive: false });
+    });
+}
+
+function showValidationCard(busInfo) {
+    if (!valBubble || !busInfo) return;
+
+    // --- FUNCTIONAL REQ 5: Hide if already updated or validated by this user ---
+    const voters = busInfo.votersLedger || {};
+    const isAuthor = (busInfo.updatedBy === currentDeviceToken || busInfo.updatedBy === ('ADMIN_' + currentDeviceToken));
+    const hasVoted = voters[currentDeviceToken] === true;
+
+    if (isAuthor || hasVoted) {
+        hideValidationCard();
+        return; // Exits immediately, bubble stays completely hidden until new update
+    }
+
+    // --- FUNCTIONAL REQ 4: Auto-expand for newly tapped buses ---
+    if (!currentValidationBus || currentValidationBus.spotId !== busInfo.spotId) {
+        isValidationCardCollapsed = false; 
+    }
+
+    currentValidationBus = busInfo;
+    const busDisplay = busInfo.busNos ? busInfo.busNos.join(', ') : busInfo.busNo;
+    
+    // --- UI REQ 2: Updated description text format (Uses Destination Name) ---
+    if (valBusDetails) {
+        valBusDetails.textContent = `Bus number ${busDisplay} for ${busInfo.name} has been parked here.`;
+    }
+
+    valBubble.classList.remove('hidden');
+    
+    // Process expand/collapse UI state
+    if (isValidationCardCollapsed) {
+        if (valFab) valFab.classList.remove('hidden');
+        if (valCard) valCard.classList.add('hidden');
+    } else {
+        if (valFab) valFab.classList.add('hidden');
+        if (valCard) valCard.classList.remove('hidden');
+    }
+}
+
+function hideValidationCard() {
+    currentValidationBus = null;
+    if (valBubble) valBubble.classList.add('hidden');
+    if (valCard) valCard.classList.add('hidden');
+    if (valFab) valFab.classList.add('hidden');
+}
+
+// Collapsible Toggle Logic
+if (valFab) {
+    valFab.onclick = () => {
+        isValidationCardCollapsed = false;
+        valFab.classList.add('hidden');
+        valCard.classList.remove('hidden');
+    };
+}
+
+if (btnValCollapse) {
+    btnValCollapse.onclick = () => {
+        isValidationCardCollapsed = true;
+        valCard.classList.add('hidden');
+        valFab.classList.remove('hidden');
+    };
+}
+
+// YES Action: Confirm & validate
+if (btnValYes) {
+    btnValYes.onclick = async () => {
+        if (!currentValidationBus) return;
+        
+        const spotId = currentValidationBus.spotId;
+        const item = activeBuses.find(b => b.spotId === spotId);
+        if (!item) {
+            alert("This bus is no longer active at this slot.");
+            hideValidationCard();
+            return;
+        }
+
+        if (item.updatedBy === currentDeviceToken || item.updatedBy === ('ADMIN_' + currentDeviceToken)) {
+            alert("You posted the latest update for this bus. Only others can validate it.");
+            return;
+        }
+
+        const voters = item.votersLedger || {};
+        if (voters[currentDeviceToken]) {
+            alert("You have already confirmed this bus location.");
+            return;
+        }
+
+        voters[currentDeviceToken] = true;
+        const newCount = voters['admin_locked'] ? 999 : Object.keys(voters).length;
+
+        const updates = {};
+        updates[`activeBuses/${spotId}/votersLedger`] = voters;
+        updates[`activeBuses/${spotId}/users`] = newCount;
+
+        try {
+            btnValYes.disabled = true;
+            await update(ref(db), updates);
+            await addContributionPoints(5);
+            alert("Thanks for keeping the AJU community updated!");
+            hideValidationCard();
+        } catch (err) {
+            console.error("Validation vote error:", err);
+        } finally {
+            btnValYes.disabled = false;
+        }
+    };
+}
+
+// NO Action: Pre-fill update form
+if (btnValNo) {
+    btnValNo.onclick = () => {
+        if (!currentValidationBus) return;
+
+        const targetBus = currentValidationBus;
+        hideValidationCard();
+
+        if (modal) modal.classList.remove('hidden');
+        switchTab('PARK');
+
+        pendingUpdate.route = allRoutes.find(r => r.num === targetBus.routeNum) || null;
+        pendingUpdate.busNo = (targetBus.busNos && targetBus.busNos[0]) || targetBus.busNo || null;
+        pendingUpdate.spotId = targetBus.spotId;
+        pendingUpdate.isReplacement = false;
+
+        if (rSelect && pendingUpdate.route) {
+            rSelect.value = pendingUpdate.route.num;
+        }
+
+        if (s1) s1.classList.add('hidden');
+        if (s2) s2.classList.remove('hidden');
+        if (s3Confirm) s3Confirm.classList.add('hidden');
+
+        if (document.getElementById('step-2-summary') && pendingUpdate.route) {
+            document.getElementById('step-2-summary').textContent = `Route ${pendingUpdate.route.num} - ${pendingUpdate.route.name}`;
+        }
+
+        populateBusGrid(false);
+
+        if (grid && pendingUpdate.busNo) {
+            const activeBtn = Array.from(grid.querySelectorAll('.grid-bus')).find(el => el.textContent.trim() === pendingUpdate.busNo);
+            if (activeBtn) activeBtn.classList.add('yellow-active');
         }
     };
 }
