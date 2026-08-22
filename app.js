@@ -2464,10 +2464,10 @@ function showValidationCard(busInfo) {
     const hasVoted = voters[currentDeviceToken] === true;
 
     // Temporarily comment out the 'return;' below if you want to test on your own screen
-    if (isAuthor || hasVoted) {
-        hideValidationCard();
-        return; 
-    }
+    // if (isAuthor || hasVoted) {
+    //     hideValidationCard();
+    //     return; 
+    // }
 
     // --- FUNCTIONAL REQ 4: Auto-expand for newly tapped buses ---
     if (!currentValidationBus || currentValidationBus.spotId !== busInfo.spotId) {
