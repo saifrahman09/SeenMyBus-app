@@ -185,8 +185,6 @@ body, html {
 }
 
 /* Floating Validation Overlay Wrapper */
-
-/* Floating Validation Overlay Wrapper */
 .validation-bubble {
   position: fixed; /* Changed from absolute to fixed so it stays locked to the mobile screen viewport */
   top: max(85px, env(safe-area-inset-top) + 65px); 

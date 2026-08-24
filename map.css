@@ -176,3 +176,107 @@
             1.275
         );
 }
+
+/* --- NATIVE APP ONBOARDING TOUR SYSTEM --- */
+#onboarding-overlay {
+    position: fixed;
+    inset: 0;
+    background: #FFFFFF;
+    z-index: 999999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: background 0.4s ease;
+    will-change: background;
+}
+#onboarding-overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+    display: none !important;
+}
+
+/* 🌟 REAL APP INTERACTION MODE (Fully Transparent) */
+#onboarding-overlay.app-visible {
+    background: transparent !important; 
+    pointer-events: none; /* Let all touches pass through to the real app */
+}
+
+/* Carousel Slides */
+#tour-fs-container {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: auto;
+}
+.tour-fs-slide {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    background: transparent;
+    transition: transform 0.5s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.5s ease;
+    will-change: transform, opacity;
+}
+.tour-fs-slide.hidden-left { transform: translateX(-100%); opacity: 0; pointer-events: none; }
+.tour-fs-slide.hidden-right { transform: translateX(100%); opacity: 0; pointer-events: none; }
+.tour-fs-slide.active-slide { transform: translateX(0); opacity: 1; pointer-events: auto; }
+
+/* 🌟 Image takes full screen behind everything */
+.tour-fs-img { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; background: #FFFFFF; }
+.tour-fs-img img { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
+
+/* 🌟 Text pushed down over the image */
+.tour-fs-content { 
+    position: absolute; 
+    bottom: 120px; 
+    left: 0; right: 0; 
+    padding: 0 28px; 
+    text-align: left; 
+    z-index: 1; 
+    text-shadow: 0 4px 24px rgba(255,255,255,0.9), 0 0 10px rgba(255,255,255,0.8);
+}
+.tour-fs-content h3 { font-size: 28px; font-weight: 800; color: #0F172A; margin: 0 0 12px 0; line-height: 1.25; letter-spacing: -0.5px; }
+.tour-fs-content p { font-size: 15px; color: #0F172A; font-weight: 600; line-height: 1.6; margin: 0; }
+.tour-fs-footer { position: absolute; bottom: 40px; left: 28px; right: 28px; display: flex; justify-content: space-between; align-items: center; z-index: 2; }
+
+/* Fluid Tappable Dots */
+.tour-fs-dots { display: flex; gap: 8px; align-items: center; }
+.fs-dot { width: 8px; height: 8px; border-radius: 4px; background: rgba(0,0,0,0.15); transition: width 0.4s cubic-bezier(0.25, 1, 0.5, 1), background-color 0.4s ease; will-change: width; display: inline-block; cursor: pointer; pointer-events: auto; }
+.fs-dot.active { width: 26px; background: #815FD7; }
+
+.btn-fs-circle { width: 58px; height: 58px; border-radius: 50%; background: #443271; color: #FFFFFF; border: none; display: flex; justify-content: center; align-items: center; box-shadow: 0 10px 20px rgba(68, 50, 113, 0.3); cursor: pointer; transition: transform 0.15s ease; pointer-events: auto; }
+.btn-fs-circle:active { transform: scale(0.92); }
+.btn-fs-circle svg { width: 26px; height: 26px; }
+
+/* 🌟 Massive Radar Animation */
+.radar-fs-wrapper { position: absolute; inset: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; background: radial-gradient(circle, #F8F6FC 0%, #FFFFFF 100%); z-index: 0; overflow: hidden; }
+.radar-ring { position: absolute; border: 2px solid rgba(129, 95, 215, 0.25); border-radius: 50%; animation: radarPulse 2.5s infinite cubic-bezier(0.1, 0.4, 0.8, 1); }
+.radar-ring:nth-child(1) { width: 160px; height: 160px; animation-delay: 0s; }
+.radar-ring:nth-child(2) { width: 320px; height: 320px; animation-delay: 0.8s; }
+.radar-ring:nth-child(3) { width: 500px; height: 500px; animation-delay: 1.6s; }
+@keyframes radarPulse { 0% { transform: scale(0.3); opacity: 1; } 100% { transform: scale(2.5); opacity: 0; } }
+.radar-center-icon { width: 110px; height: 110px; background: #FFFFFF; border-radius: 50%; display: flex; justify-content: center; align-items: center; box-shadow: 0 16px 40px rgba(129, 95, 215, 0.3); z-index: 2; }
+.radar-center-icon img { width: 55px; height: 55px; }
+
+.btn-fs-wide { background: linear-gradient(180deg, #815FD7 0%, #443271 100%); color: #FFFFFF; border: none; padding: 16px; border-radius: 16px; font-weight: 700; font-size: 16px; cursor: pointer; width: 240px; margin: 20px auto 0 auto; box-shadow: 0 10px 24px rgba(129, 95, 215, 0.35); transition: transform 0.15s ease; display: block; pointer-events: auto; }
+.btn-fs-wide:active { transform: scale(0.95); }
+
+/* 🌟 High-Contrast Spotlight Cards */
+#tour-spotlight-container { position: absolute; inset: 0; pointer-events: none; }
+.tour-spotlight-card {
+    background: #FFFFFF; padding: 22px; border-radius: 24px; width: 88%; max-width: 320px;
+    box-shadow: 0 24px 64px rgba(15, 23, 42, 0.4), 0 0 0 2px rgba(129, 95, 215, 0.6);
+    position: absolute; animation: tourPopUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    pointer-events: auto; 
+}
+@keyframes tourPopUp { 0% { transform: scale(0.9); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+.tour-spotlight-card h4 { margin: 0 0 8px 0; font-size: 17px; color: #0F172A; font-weight: 800; }
+.tour-spotlight-card p { margin: 0 0 18px 0; font-size: 13.5px; color: #64748B; line-height: 1.5; }
+.btn-spotlight { width: 100%; background: linear-gradient(180deg, #815FD7 0%, #443271 100%); color: #FFFFFF; border: none; padding: 14px; border-radius: 14px; font-weight: 700; font-size: 15px; cursor: pointer; box-shadow: 0 6px 16px rgba(129, 95, 215, 0.3); transition: transform 0.15s ease; }
+.btn-spotlight:active { transform: scale(0.95); }
+
+/* 🌟 REAL APP ATTACHED HIGHLIGHT ANIMATIONS */
+.tour-target-glow circle { animation: ultraGlow 1.2s infinite alternate cubic-bezier(0.4, 0, 0.2, 1); stroke: #815FD7 !important; stroke-width: 4px !important; }
+@keyframes ultraGlow { from { filter: drop-shadow(0 0 2px #FCB041); } to { filter: drop-shadow(0 0 20px #FCB041); } }
+.tour-target-html { animation: htmlPulseShadow 1.5s infinite cubic-bezier(0.4, 0, 0.2, 1); position: relative; z-index: 10000; border-radius: inherit; }
+@keyframes htmlPulseShadow { 0% { box-shadow: 0 0 0 0 rgba(129, 95, 215, 0.8); } 70% { box-shadow: 0 0 0 16px rgba(129, 95, 215, 0); } 100% { box-shadow: 0 0 0 0 rgba(129, 95, 215, 0); } }

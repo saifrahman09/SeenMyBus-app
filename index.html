@@ -31,21 +31,7 @@
     </div>
     
     <div id="app-container">
-        <div id="pinch-guide" class="hidden">
-            <div class="guide-box">
-                <div class="pinch-anim-icon">
-                    <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <path d="m15 9-6 6"></path>
-                        <path d="M9 9h6v6"></path>
-                    </svg>
-                </div>
-                <div class="guide-text">
-                    <strong>Pinch to Zoom & Drag</strong>
-                    <span>Explore parking spots across campus</span>
-                </div>
-            </div>
-        </div>
+        
 
         <div id="consent-banner" class="hidden">
             <div class="consent-content">
@@ -256,5 +242,126 @@
         </div>
     </div>
     <script type="module" src="./app.js?v=6"></script>
+
+  <!-- EXACT UI ONBOARDING OVERLAY -->
+    <div id="onboarding-overlay" class="hidden">
+        
+        <!-- CAROUSEL SLIDES (STEPS 1 to 4) -->
+        <div id="tour-fs-container">
+            <div class="tour-fs-slide hidden-right" data-step="1">
+                <div class="tour-fs-img"><img src="./onboarding-1.png" alt="Welcome"></div>
+                <div class="tour-fs-content">
+                    <h3>Welcome to <span style="color: #815FD7;">SeenMyBus</span></h3>
+                    <p>It all started with one genuine question we AJU students ask every single day after classes:<br><b>"Have you seen my bus?"</b></p>
+                </div>
+                <div class="tour-fs-footer">
+                    <div class="tour-fs-dots">
+                        <span class="fs-dot active" onclick="window.showTourStep(1)"></span><span class="fs-dot" onclick="window.showTourStep(2)"></span><span class="fs-dot" onclick="window.showTourStep(3)"></span><span class="fs-dot" onclick="window.showTourStep(4)"></span>
+                    </div>
+                    <button class="btn-fs-circle" onclick="window.nextTourStep()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="tour-fs-slide hidden-right" data-step="2">
+                <div class="tour-fs-img"><img src="./onboarding-2.png" alt="Chaos"></div>
+                <div class="tour-fs-content">
+                    <p>We all know the daily chaos—running around campus, calling friends, rushing to grab a seat, and guessing which bus number will actually be assigned to our route today.</p>
+                </div>
+                <div class="tour-fs-footer">
+                    <div class="tour-fs-dots">
+                        <span class="fs-dot" onclick="window.showTourStep(1)"></span><span class="fs-dot active" onclick="window.showTourStep(2)"></span><span class="fs-dot" onclick="window.showTourStep(3)"></span><span class="fs-dot" onclick="window.showTourStep(4)"></span>
+                    </div>
+                    <button class="btn-fs-circle" onclick="window.nextTourStep()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="tour-fs-slide hidden-right" data-step="3">
+                <div class="tour-fs-img"><img src="./onboarding-3.png" alt="Solution"></div>
+                <div class="tour-fs-content">
+                    <h3>A map powered<br>by students</h3>
+                    <p>Just like tracking a live train, SeenMyBus gives you the <b>real-time location</b> of every bus parked on campus. No GPS trackers or official announcements required—just students helping students.</p>
+                </div>
+                <div class="tour-fs-footer">
+                    <div class="tour-fs-dots">
+                        <span class="fs-dot" onclick="window.showTourStep(1)"></span><span class="fs-dot" onclick="window.showTourStep(2)"></span><span class="fs-dot active" onclick="window.showTourStep(3)"></span><span class="fs-dot" onclick="window.showTourStep(4)"></span>
+                    </div>
+                    <button class="btn-fs-circle" onclick="window.nextTourStep()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="tour-fs-slide hidden-right" data-step="4">
+                <div class="radar-fs-wrapper">
+                    <div class="radar-ring"></div>
+                    <div class="radar-ring"></div>
+                    <div class="radar-ring"></div>
+                    <div class="radar-center-icon">
+                        <img src="./logo.svg" alt="Logo">
+                    </div>
+                </div>
+                <div class="tour-fs-content" style="text-align: center; bottom: 10%;">
+                    <h3>See it in action</h3>
+                    <button class="btn-fs-wide" onclick="window.nextTourStep()">Start Interactive Tour</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- APP INTERACTION OVERLAY (STEPS 5 to 10) -->
+        <div id="tour-spotlight-container" class="hidden">
+            
+            <div class="tour-spotlight-step hidden" data-step="5">
+                <div class="tour-spotlight-card" style="bottom: 40%; left: 0; right: 0; margin: auto;">
+                    <h4>1. Explore the Map</h4>
+                    <p>Pinch to zoom! We've added a dummy bus to your map. Tap the <b>glowing yellow dot</b> on the map above to view its details.</p>
+                </div>
+            </div>
+
+            <div class="tour-spotlight-step hidden" data-step="6">
+                <!-- 🌟 Pushed to the very top so Yes/No validation card is easily tappable -->
+                <div class="tour-spotlight-card" style="bottom: 55%; left: 0; right: 0; margin: auto;">
+                    <h4>2. Keep Map Accurate</h4>
+                    <p>Tap the <b>"Yes"</b> or <b>"No"</b> button below to confirm the location. This community check filters out wrong updates!</p>
+                </div>
+            </div>
+
+            <div class="tour-spotlight-step hidden" data-step="7">
+                <!-- 🌟 Moved to bottom, and added a Next button so user can type freely -->
+                <div class="tour-spotlight-card" style="bottom: 70%; left: 0; right: 0; margin: auto;">
+                    <h4>3. Search Routes</h4>
+                    <p>Tap the <b>search bar</b> at the top of the screen to quickly filter the map. Try typing a route, then click Next!</p>
+                    <button class="btn-spotlight" onclick="window.nextTourStep()">Next: Fast Navigation</button>
+                </div>
+            </div>
+
+            <div class="tour-spotlight-step hidden" data-step="8">
+                <!-- 🌟 Top positioned so the List at the bottom is clear -->
+                <div class="tour-spotlight-card" style="bottom: 33%; left: 0; right: 0; margin: auto;">
+                    <h4>4. Fast Navigation</h4>
+                    <p>Tap any bus in the <b>route list</b> below the map to instantly fly to its exact parking location!</p>
+                </div>
+            </div>
+
+            <div class="tour-spotlight-step hidden" data-step="9">
+                <div class="tour-spotlight-card" style="bottom: 10%; left: 0; right: 0; margin: auto;">
+                    <h4>5. You are the core</h4>
+                    <p>Spotted a bus? Tap the pulsing <b>"Update a Bus"</b> button at the bottom of your screen to help others.</p>
+                </div>
+            </div>
+
+            <div class="tour-spotlight-step hidden" data-step="10">
+                <div class="tour-spotlight-card" style="top: 8%; left: 0; right: 0; margin: auto; z-index: 9999999;">
+                    <h4>Add buses on the Map</h4>
+                    <p><b>Add:</b> Select a route, pick it's bus number and mark the parking spot in map to add an bus.<br><b>Replace:</b> Select the same route but pick the currect bus number this time, It automaticlly updates all users.<br><b>Unassigned:</b> Spoted a bus beforehand? Choose "Route Unknown" from dropdown list and place it on the map!</p>
+                    <button class="btn-spotlight" onclick="window.finishTour()">Got it!</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
 </body>
 </html>
