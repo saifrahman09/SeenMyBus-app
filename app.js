@@ -96,6 +96,33 @@ function initSidebarLogoTap() {
 }
 initSidebarLogoTap();
 
+// --- 3B. PWA Install Prompt Engine ---
+let deferredInstallPrompt = null;
+const installAppBtn = document.getElementById('btn-install-app') || document.getElementById('pwa-install-btn');
+
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    if (installAppBtn) installAppBtn.classList.remove('hidden');
+});
+
+if (installAppBtn) {
+    installAppBtn.addEventListener('click', async () => {
+        if (!deferredInstallPrompt) return;
+        deferredInstallPrompt.prompt();
+        const { outcome } = await deferredInstallPrompt.userChoice;
+        if (outcome === 'accepted') {
+            installAppBtn.classList.add('hidden');
+        }
+        deferredInstallPrompt = null;
+    });
+}
+
+window.addEventListener('appinstalled', () => {
+    if (installAppBtn) installAppBtn.classList.add('hidden');
+    deferredInstallPrompt = null;
+});
+
 // --- 4. Simplified Device Identity ---
 function getDeviceToken() {
     let token = localStorage.getItem('smb_device_token');
@@ -139,6 +166,7 @@ function getCurrentCycleKey() {
 }
 
 async function addContributionPoints(points = 10) {
+    if (window.isTourActive) return; // 🛑 Block tour points from polluting real user profiles
     const cycleKey = getCurrentCycleKey();
     const userRef = ref(db, `userProfiles/${currentDeviceToken}/${cycleKey}`);
     try {
@@ -461,11 +489,12 @@ function createUnassignedDataSignature(data) {
 }
 
 function handleBusesData(data) {
+    // TOUR SAFEGUARD: Inject Adityapur, Bistupur & Mango Chauk during tour
     if (window.isTourActive) {
         data = {
-            'spot-15': { busNo: "04", busNos: ["04"], routeNum: "6", name: "Adityapur", users: 1, updatedAt: Date.now(), updatedBy: 'tour' },
-            'spot-03': { busNo: "25", busNos: ["25"], routeNum: "3", name: "Bistupur", users: 1, updatedAt: Date.now(), updatedBy: 'tour' },
-            'spot-07': { busNo: "22", busNos: ["22"], routeNum: "7", name: "Mango chauk", users: 1, updatedAt: Date.now(), updatedBy: 'tour' }
+            'spot-15': { busNo: "04", busNos: ["04"], routeNum: "6", name: "Adityapur", users: 1, updatedAt: 1700000000000, updatedBy: 'tour' },
+            'spot-03': { busNo: "25", busNos: ["25"], routeNum: "3", name: "Bistupur", users: 1, updatedAt: 1700000000000, updatedBy: 'tour' },
+            'spot-07': { busNo: "22", busNos: ["22"], routeNum: "7", name: "Mango chauk", users: 1, updatedAt: 1700000000000, updatedBy: 'tour' }
         };
     }
     
@@ -476,12 +505,10 @@ function handleBusesData(data) {
 
     if (!data) {
         if (lastActiveDataSignature === '') return;
-
         lastActiveDataSignature = '';
         activeBuses = [];
         busLocationTracker = {};
         routeLocationTracker = {};
-
         if (mapElement && appState === 'VIEW') renderMapSpots();
         if (appState === 'VIEW') renderList([]);
         return;
@@ -513,7 +540,7 @@ function handleBusesData(data) {
                 prevSpot = routeLocationTracker[ab.routeNum];
             }
 
-            if (prevSpot && prevSpot !== ab.spotId) {
+            if (!window.isTourActive && prevSpot && prevSpot !== ab.spotId) {
                 animateBusTransition(bNo, prevSpot, ab.spotId);
             }
 
@@ -1046,16 +1073,15 @@ function selectListRoute(routeKey, spotId = null, fromMap = false) {
     const container = document.getElementById('bus-list');
     if (!container || !routeKey) return;
 
-    // Tour Progression trigger from Step 8
+    // 🌟 TOUR PROGRESSION: Tapping ANY bus in list advances from Step 8 to Step 9
     if (window.isTourActive && currentTourStep === 8 && !fromMap) {
         setTimeout(() => {
             if (typeof hideValidationCard === 'function') hideValidationCard();
             window.nextTourStep();
-        }, 500);
+        }, 400);
     }
 
     selectedRouteKey = routeKey;
-
     if (fromMap) {
         topRouteKey = routeKey;
         const targetItem = Array.from(container.querySelectorAll('.bus-item')).find(item => item.dataset.routeKey === routeKey);
@@ -1346,12 +1372,12 @@ function renderSimpleDepartList() {
 }
 
 async function executeFastUnassign(busNumber) {
+    if (window.isTourActive) return; // 🛑 Block tour departures from altering production database
     try {
         const [snapActive, snapUn] = await Promise.all([
             get(ref(db, 'activeBuses')),
             get(ref(db, 'unassignedBuses'))
         ]);
-
         const valActive = snapActive.val() || {};
         const valUn = snapUn.val() || {};
         let activeUpdates = {};
@@ -1533,6 +1559,19 @@ if (document.getElementById('btn-prev-3')) {
 if (document.getElementById('btn-submit-update')) {
     document.getElementById('btn-submit-update').onclick = async () => {
         if (!pendingUpdate.spotId) return alert("Tap a spot on the map!");
+
+        // 🛑 TOUR SAFEGUARD: Intercept click and advance tour without touching Firebase
+        if (window.isTourActive) {
+            if (modal) modal.classList.add('hidden');
+            if (selFooter) selFooter.classList.add('hidden');
+            if (fixedFooter) fixedFooter.classList.remove('hidden');
+            if (draggableSheet) draggableSheet.style.transform = `translateY(${currentTranslate}px)`;
+            if (topBar) topBar.style.transform = `translateY(0)`;
+            appState = 'VIEW';
+            renderMapSpots();
+            if (typeof window.nextTourStep === 'function') window.nextTourStep();
+            return;
+        }
 
         document.getElementById('btn-submit-update').disabled = true;
         const targetSpot = pendingUpdate.spotId;
@@ -1845,12 +1884,13 @@ window.isTourActive = false;
 
 window.forceTourRefresh = async function() {
     try {
-        const snapActive = await import("https://www.gstatic.com/firebasejs/12.17.1/firebase-database.js").then(module => module.get(module.ref(db, 'activeBuses')));
+        const snapActive = await get(ref(db, 'activeBuses'));
+        const snapUn = await get(ref(db, 'unassignedBuses'));
         handleBusesData(snapActive.val());
-        const snapUn = await import("https://www.gstatic.com/firebasejs/12.17.1/firebase-database.js").then(module => module.get(module.ref(db, 'unassignedBuses')));
         handleUnassignedData(snapUn.val());
     } catch (e) {
-        handleBusesData({});
+        handleBusesData(null);
+        handleUnassignedData(null);
     }
 };
 
@@ -1867,16 +1907,22 @@ window.showTourStep = function(stepNum) {
     
     overlay.classList.remove('hidden');
     
+    // Switch to Transparent UI Mode on Step 5+
     if (stepNum >= 5) {
         overlay.classList.add('app-visible');
-        document.getElementById('tour-fs-container').style.display = 'none';
-        document.getElementById('tour-spotlight-container').classList.remove('hidden');
+        const fsContainer = document.getElementById('tour-fs-container');
+        if (fsContainer) fsContainer.style.display = 'none';
+        const spotContainer = document.getElementById('tour-spotlight-container');
+        if (spotContainer) spotContainer.classList.remove('hidden');
     } else {
         overlay.classList.remove('app-visible');
-        document.getElementById('tour-fs-container').style.display = 'block';
-        document.getElementById('tour-spotlight-container').classList.add('hidden');
+        const fsContainer = document.getElementById('tour-fs-container');
+        if (fsContainer) fsContainer.style.display = 'block';
+        const spotContainer = document.getElementById('tour-spotlight-container');
+        if (spotContainer) spotContainer.classList.add('hidden');
     }
 
+    // Carousel Slide Logic (1 to 4)
     if (stepNum <= 4) {
         document.querySelectorAll('.tour-fs-slide').forEach(el => {
             const s = parseInt(el.dataset.step);
@@ -1886,6 +1932,7 @@ window.showTourStep = function(stepNum) {
         });
     }
 
+    // Spotlight Card Logic (5 to 10)
     if (stepNum >= 5) {
         document.querySelectorAll('.tour-spotlight-step').forEach(el => {
             if (parseInt(el.dataset.step) === stepNum) el.classList.remove('hidden');
@@ -1893,68 +1940,93 @@ window.showTourStep = function(stepNum) {
         });
     }
 
+    // Clear old visual targets and listeners
     document.querySelectorAll('.tour-target-glow').forEach(el => el.classList.remove('tour-target-glow'));
     document.querySelectorAll('.tour-target-html').forEach(el => el.classList.remove('tour-target-html'));
-    if (window.tourSpotListener) {
-        const s = document.getElementById('spot-15');
-        if (s) s.removeEventListener('click', window.tourSpotListener);
+    
+    if (window.tourMapListeners) {
+        window.tourMapListeners.forEach(({ el, fn }) => el && el.removeEventListener('click', fn));
+        window.tourMapListeners = [];
     }
 
+    // STEP 5: Clean Zoom directly into Adityapur (Spot 15)
     if (stepNum === 5) {
         window.isTourActive = true;
         window.forceTourRefresh();
+
         setTimeout(() => {
-            const spotEl = document.getElementById('spot-15');
-            if (spotEl) {
-                spotEl.classList.add('tour-target-glow');
-                window.tourSpotListener = () => {
-                    spotEl.classList.remove('tour-target-glow');
-                    setTimeout(() => window.nextTourStep(), 500);
-                    spotEl.removeEventListener('click', window.tourSpotListener);
-                };
-                spotEl.addEventListener('click', window.tourSpotListener);
-            }
-        }, 800);
+            // Smoothly focus and deeply zoom into Spot 15
+            focusOnSpot('spot-15');
+
+            const adityapurSpot = document.getElementById('spot-15');
+            if (adityapurSpot) adityapurSpot.classList.add('tour-target-glow');
+
+            // Allow clicking ANY bus on map to advance smoothly
+            window.tourMapListeners = [];
+            ['spot-15', 'spot-03', 'spot-07'].forEach(sId => {
+                const el = document.getElementById(sId);
+                if (el) {
+                    const listener = () => {
+                        if (adityapurSpot) adityapurSpot.classList.remove('tour-target-glow');
+                        setTimeout(() => window.nextTourStep(), 400);
+                    };
+                    el.addEventListener('click', listener, { once: true });
+                    window.tourMapListeners.push({ el, fn: listener });
+                }
+            });
+        }, 500);
     }
 
+    // STEP 6: Highlight YES/NO buttons on validation card
     if (stepNum === 6) {
         setTimeout(() => {
             const btnYes = document.getElementById('btn-val-yes');
             const btnNo = document.getElementById('btn-val-no');
             if (btnYes) btnYes.classList.add('tour-target-html');
             if (btnNo) btnNo.classList.add('tour-target-html');
-        }, 600);
+        }, 500);
     }
 
+    // STEP 7: Highlight Search Bar
     if (stepNum === 7) {
         const searchInput = document.getElementById('search-input');
         if (searchInput) searchInput.classList.add('tour-target-html');
     }
 
+    // STEP 8: Highlight Adityapur item prominently in the list
     if (stepNum === 8) {
         setTimeout(() => {
-            const listEl = document.querySelector('#bus-list .bus-item');
+            const listEl = document.querySelector('#bus-list .bus-item[data-route-key="route_6_Adityapur"]') 
+                        || document.querySelector('#bus-list .bus-item');
             if (listEl) listEl.classList.add('tour-target-html');
         }, 300);
     }
 
+    // STEP 9: Highlight Update Bus FAB
     if (stepNum === 9) {
         const btnUpdate = document.getElementById('btn-update-bus');
         if (btnUpdate) {
             btnUpdate.classList.add('tour-target-html');
-            window.tourUpdateListener = () => {
+            const tourUpdateListener = () => {
                 btnUpdate.classList.remove('tour-target-html');
                 setTimeout(() => window.nextTourStep(), 400);
-                btnUpdate.removeEventListener('click', window.tourUpdateListener);
             };
-            btnUpdate.addEventListener('click', window.tourUpdateListener);
+            btnUpdate.addEventListener('click', tourUpdateListener, { once: true });
         }
     }
 };
 
 window.nextTourStep = function() {
-    if (currentTourStep < totalTourSteps) window.showTourStep(currentTourStep + 1);
-    else window.finishTour();
+    // 🌟 Clean up any active glows or validation bubble before jumping to next step
+    if (typeof hideValidationCard === 'function') hideValidationCard();
+    document.querySelectorAll('.tour-target-glow').forEach(el => el.classList.remove('tour-target-glow'));
+    document.querySelectorAll('.tour-target-html').forEach(el => el.classList.remove('tour-target-html'));
+
+    if (currentTourStep < totalTourSteps) {
+        window.showTourStep(currentTourStep + 1);
+    } else {
+        window.finishTour();
+    }
 };
 
 window.skipTour = function() { window.finishTour(); };
@@ -1962,14 +2034,29 @@ window.skipTour = function() { window.finishTour(); };
 window.finishTour = function() {
     localStorage.setItem('smb_tour_completed', 'true');
     window.isTourActive = false;
+    
+    // 🌟 Purge all dummy data signatures and cache
+    lastActiveDataSignature = null;
+    lastUnassignedDataSignature = null;
+    activeBuses = [];
+    unassignedBuses = [];
+    busLocationTracker = {};
+    routeLocationTracker = {};
+
+    // 🌟 Refresh live production Firebase data immediately
     window.forceTourRefresh();
     
+    // Cleanup UI
     const overlay = document.getElementById('onboarding-overlay');
     if (overlay) overlay.classList.add('hidden');
     const modal = document.getElementById('modal-overlay');
     if (modal) modal.classList.add('hidden');
     if (typeof hideValidationCard === 'function') hideValidationCard();
-    window.triggerPostTourConsents();
+
+    // Trigger post-tour cookie and notification banners
+    if (typeof window.triggerPostTourConsents === 'function') {
+        window.triggerPostTourConsents();
+    }
 };
 
 checkFirstVisitOnboarding();

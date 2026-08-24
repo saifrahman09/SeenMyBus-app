@@ -311,3 +311,24 @@ body, html {
 .btn-val-no {
   background: #b92a2a; /* Deep red matching your mockup */
 }
+
+/* Small Tour Step Skip Button */
+.btn-tour-step-skip {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.btn-tour-step-skip:hover {
+    color: #FCB041;
+    background: rgba(252, 176, 65, 0.08);
+}

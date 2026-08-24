@@ -154,7 +154,6 @@
                 </a>
             </div>
             
-            <div class="side-panel-credit">Developed by Saif Rahman (Batch '28)</div>
             <div class="panel-footer">
                 <a href="./terms-and-conditions.html">Terms & Conditions</a>
                 <a href="./privacy-policy.html">Privacy Policy</a>
@@ -249,7 +248,7 @@
         <!-- CAROUSEL SLIDES (STEPS 1 to 4) -->
         <div id="tour-fs-container">
             <div class="tour-fs-slide hidden-right" data-step="1">
-                <div class="tour-fs-img"><img src="./onboarding-1.png" alt="Welcome"></div>
+                <div class="tour-fs-img"><img src="./onboarding-1.jpg" alt="Welcome"></div>
                 <div class="tour-fs-content">
                     <h3>Welcome to <span style="color: #815FD7;">SeenMyBus</span></h3>
                     <p>It all started with one genuine question we AJU students ask every single day after classes:<br><b>"Have you seen my bus?"</b></p>
@@ -265,7 +264,7 @@
             </div>
 
             <div class="tour-fs-slide hidden-right" data-step="2">
-                <div class="tour-fs-img"><img src="./onboarding-2.png" alt="Chaos"></div>
+                <div class="tour-fs-img"><img src="./onboarding-2.jpg" alt="Chaos"></div>
                 <div class="tour-fs-content">
                     <p>We all know the daily chaos—running around campus, calling friends, rushing to grab a seat, and guessing which bus number will actually be assigned to our route today.</p>
                 </div>
@@ -280,7 +279,7 @@
             </div>
 
             <div class="tour-fs-slide hidden-right" data-step="3">
-                <div class="tour-fs-img"><img src="./onboarding-3.png" alt="Solution"></div>
+                <div class="tour-fs-img"><img src="./onboarding-3.jpg" alt="Solution"></div>
                 <div class="tour-fs-content">
                     <h3>A map powered<br>by students</h3>
                     <p>Just like tracking a live train, SeenMyBus gives you the <b>real-time location</b> of every bus parked on campus. No GPS trackers or official announcements required—just students helping students.</p>
@@ -315,9 +314,10 @@
         <div id="tour-spotlight-container" class="hidden">
             
             <div class="tour-spotlight-step hidden" data-step="5">
-                <div class="tour-spotlight-card" style="bottom: 40%; left: 0; right: 0; margin: auto;">
+                <div class="tour-spotlight-card" style="bottom: 20%; left: 0; right: 0; margin: auto;">
                     <h4>1. Explore the Map</h4>
                     <p>Pinch to zoom! We've added a dummy bus to your map. Tap the <b>glowing yellow dot</b> on the map above to view its details.</p>
+                    <button type="button" class="btn-tour-step-skip" onclick="window.nextTourStep()">Skip</button>
                 </div>
             </div>
 
@@ -326,6 +326,7 @@
                 <div class="tour-spotlight-card" style="bottom: 23%; left: 0; right: 0; margin: auto;">
                     <h4>2. Keep Map Accurate</h4>
                     <p>Tap the <b>"Yes"</b> or <b>"No"</b> button above to confirm if it's correct or incorrect. This community check filters out wrong updates!</p>
+                    <button type="button" class="btn-tour-step-skip" onclick="window.nextTourStep()">Skip</button>
                 </div>
             </div>
 
@@ -333,8 +334,8 @@
                 <!-- 🌟 Moved to bottom, and added a Next button so user can type freely -->
                 <div class="tour-spotlight-card" style="bottom: 40%; left: 0; right: 0; margin: auto;">
                     <h4>3. Search Routes</h4>
-                    <p>Tap the <b>search bar</b> at the top of the screen to quickly filter the map. Try typing a route, then click Next!</p>
-                    <button class="btn-spotlight" onclick="window.nextTourStep()">Next: Fast Navigation</button>
+                    <p>Tap the <b>search bar</b> at the top of the screen to quickly filter the list. Try typing a route or bus no., then click Next!</p>
+                    <button class="btn-spotlight" onclick="window.nextTourStep()">Next</button>
                 </div>
             </div>
 
@@ -343,6 +344,7 @@
                 <div class="tour-spotlight-card" style="bottom: 60%; left: 0; right: 0; margin: auto;">
                     <h4>4. Fast Navigation</h4>
                     <p>Tap any bus in the <b>route list</b> below the map to instantly fly to its exact parking location!</p>
+                    <button type="button" class="btn-tour-step-skip" onclick="window.nextTourStep()">Skip</button>
                 </div>
             </div>
 
@@ -350,13 +352,14 @@
                 <div class="tour-spotlight-card" style="bottom: 20%; left: 0; right: 0; margin: auto;">
                     <h4>5. You are the core</h4>
                     <p>Spotted a bus? Tap the pulsing <b>"Update a Bus"</b> button at the bottom of your screen to help others.</p>
+                    <button type="button" class="btn-tour-step-skip" onclick="window.nextTourStep()">Skip</button>
                 </div>
             </div>
 
             <div class="tour-spotlight-step hidden" data-step="10">
                 <div class="tour-spotlight-card" style="top: 8%; left: 0; right: 0; margin: auto; z-index: 9999999;">
                     <h4>Add, Update or delete buses from the Map</h4>
-                    <button class="btn-spotlight" onclick="window.finishTour()">Got it!</button>
+                    <button class="btn-spotlight" onclick="window.finishTour()">Let's Go</button>
                 </div>
             </div>
 
