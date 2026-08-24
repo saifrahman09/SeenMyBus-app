@@ -1259,7 +1259,9 @@ function focusOnSpot(spotId) {
 
     if (typeof showValidationCard === 'function') {
         const activeBusInfo = activeBuses.find(b => b.spotId === spotId);
-        const allowTourValidation = !window.isTourActive || (currentTourStep === 5 || currentTourStep === 6);
+        
+        // 🌟 Only show validation bubble on Step 6 during the tour (Suppressed on Step 5!)
+        const allowTourValidation = !window.isTourActive || currentTourStep === 6;
 
         if (activeBusInfo && appState === 'VIEW' && allowTourValidation) {
             showValidationCard(activeBusInfo);
@@ -1952,23 +1954,33 @@ window.showTourStep = function(stepNum) {
     // STEP 5: Clean Zoom directly into Adityapur (Spot 15)
     if (stepNum === 5) {
         window.isTourActive = true;
-        window.forceTourRefresh();
+        window.forceTourRefresh(); // Inject mock buses
+
+        // Ensure validation bubble stays completely hidden during Step 5
+        if (typeof hideValidationCard === 'function') hideValidationCard();
 
         setTimeout(() => {
-            // Smoothly focus and deeply zoom into Spot 15
-            focusOnSpot('spot-15');
+            focusOnSpot('spot-15'); // Camera zooms smoothly without opening card
 
             const adityapurSpot = document.getElementById('spot-15');
             if (adityapurSpot) adityapurSpot.classList.add('tour-target-glow');
 
-            // Allow clicking ANY bus on map to advance smoothly
+            // Allow clicking ANY bus on map to transition cleanly to Step 6
             window.tourMapListeners = [];
             ['spot-15', 'spot-03', 'spot-07'].forEach(sId => {
                 const el = document.getElementById(sId);
                 if (el) {
                     const listener = () => {
                         if (adityapurSpot) adityapurSpot.classList.remove('tour-target-glow');
-                        setTimeout(() => window.nextTourStep(), 400);
+                        
+                        // Advance to Step 6 and open validation card for the tapped bus
+                        setTimeout(() => {
+                            window.nextTourStep();
+                            const busInfo = activeBuses.find(b => b.spotId === sId);
+                            if (busInfo && typeof showValidationCard === 'function') {
+                                showValidationCard(busInfo);
+                            }
+                        }, 300);
                     };
                     el.addEventListener('click', listener, { once: true });
                     window.tourMapListeners.push({ el, fn: listener });
