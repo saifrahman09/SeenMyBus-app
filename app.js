@@ -201,20 +201,27 @@ function initNotificationSystem() {
     }
 }
 
-function sendLocalNotification(title, body) {
+
+
+// --- 8. Anti-Spam Real-Time Notification System ---
+const MAX_NOTIF_AGE_MS = 20 * 60 * 1000; // 20 minutes expiration window
+
+// Initialize baseline timestamp on first launch to block historical notification dumps
+if (!localStorage.getItem('smb_last_broadcast_seen')) {
+    localStorage.setItem('smb_last_broadcast_seen', (Date.now() - 60000).toString());
+}
+
+function sendLocalNotification(title, body, tag = "aju-bus-alert") {
     if (!("Notification" in window) || Notification.permission !== "granted") return;
 
     const notifOptions = {
         body: body,
         icon: "./logo.svg",
         badge: "./logo.svg",
-        vibrate: [200, 100, 200, 100, 200],
-        tag: "aju-bus-alert",
+        vibrate: [200, 100, 200],
+        tag: tag, // Replaces previous notification for this specific route instead of stacking
         renotify: true,
-        actions: [
-            { action: 'open_map', title: 'See on App' },
-            { action: 'dismiss', title: 'Dismiss' }
-        ]
+        data: { url: './index.html' }
     };
 
     if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
@@ -223,7 +230,7 @@ function sendLocalNotification(title, body) {
         });
     } else {
         const notif = new Notification(title, notifOptions);
-        notif.onclick = function() {
+        notif.onclick = function () {
             window.focus();
             this.close();
         };
@@ -233,14 +240,30 @@ function sendLocalNotification(title, body) {
 onValue(ref(db, 'broadcastNotifications'), (snap) => {
     const broadcasts = snap.val();
     if (!broadcasts) return;
+
+    const now = Date.now();
     const lastSeenTime = parseInt(localStorage.getItem('smb_last_broadcast_seen') || '0', 10);
+    let maxSeenTimestamp = lastSeenTime;
+
     Object.keys(broadcasts).forEach(notifId => {
         const item = broadcasts[notifId];
-        if (item && item.createdAt > lastSeenTime) {
-            sendLocalNotification(item.title || "Campus Bus Alert", item.message);
-            localStorage.setItem('smb_last_broadcast_seen', Date.now().toString());
+        if (!item || !item.createdAt) return;
+
+        const isNew = item.createdAt > lastSeenTime;
+        const isFresh = (now - item.createdAt) <= MAX_NOTIF_AGE_MS;
+
+        // Deliver only if it was posted after last app check AND is under 20 minutes old
+        if (isNew && isFresh) {
+            const routeTag = item.routeNum ? `bus-route-${item.routeNum}` : `campus-alert-${notifId}`;
+            sendLocalNotification(item.title || "Campus Bus Alert", item.message, routeTag);
+        }
+
+        if (item.createdAt > maxSeenTimestamp) {
+            maxSeenTimestamp = item.createdAt;
         }
     });
+
+    localStorage.setItem('smb_last_broadcast_seen', maxSeenTimestamp.toString());
 });
 
 // --- 9. Smooth SVG Relocation Transit Animation ---
@@ -440,7 +463,9 @@ function createUnassignedDataSignature(data) {
 function handleBusesData(data) {
     if (window.isTourActive) {
         data = {
-            'spot-15': { busNo: "04", busNos: ["04"], routeNum: "6", name: "Adityapur", users: 1, updatedAt: Date.now(), updatedBy: 'tour' }
+            'spot-15': { busNo: "04", busNos: ["04"], routeNum: "6", name: "Adityapur", users: 1, updatedAt: Date.now(), updatedBy: 'tour' },
+            'spot-03': { busNo: "25", busNos: ["25"], routeNum: "3", name: "Bistupur", users: 1, updatedAt: Date.now(), updatedBy: 'tour' },
+            'spot-07': { busNo: "22", busNos: ["22"], routeNum: "7", name: "Mango chauk", users: 1, updatedAt: Date.now(), updatedBy: 'tour' }
         };
     }
     

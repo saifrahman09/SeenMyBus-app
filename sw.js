@@ -1,4 +1,4 @@
-const CACHE_NAME = 'seenmybus-v6';
+const CACHE_NAME = 'seenmybus-v7';
 
 const STATIC_ASSETS = [
     './',
@@ -7,6 +7,9 @@ const STATIC_ASSETS = [
     './main.css',
     './map.css',
     './logo.svg',
+    './onboarding-1.png',
+    './onboarding-2.png',
+    './onboarding-3.png',
     './ArkaJainUniversityBusMap.xml',
     './faq.html',
     './terms-and-conditions.html',
@@ -20,7 +23,6 @@ self.addEventListener('install', (event) => {
             return cache.addAll(STATIC_ASSETS);
         })
     );
-
     self.skipWaiting();
 });
 
@@ -30,22 +32,14 @@ self.addEventListener('activate', (event) => {
         caches.keys().then((keys) => {
             return Promise.all(
                 keys
-                    .filter(
-                        (key) => key !== CACHE_NAME
-                    )
-                    .map(
-                        (key) =>
-                            caches.delete(key)
-                    )
+                    .filter((key) => key !== CACHE_NAME)
+                    .map((key) => caches.delete(key))
             );
-        }).then(() =>
-            self.clients.claim()
-        )
+        }).then(() => self.clients.claim())
     );
 });
 
-// 3. Fetch - Cache-first for static files,
-// bypass Firebase & WebSockets
+// 3. Fetch - Cache-first for static files, bypass Firebase & WebSockets
 self.addEventListener('fetch', (event) => {
     const url = event.request.url;
 
@@ -60,147 +54,74 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
         fetch(event.request)
             .then((response) => {
-
                 if (
                     response &&
                     response.status === 200 &&
                     response.type === 'basic'
                 ) {
-                    const responseClone =
-                        response.clone();
-
-                    caches.open(
-                        CACHE_NAME
-                    ).then(
-                        (cache) =>
-                            cache.put(
-                                event.request,
-                                responseClone
-                            )
+                    const responseClone = response.clone();
+                    caches.open(CACHE_NAME).then((cache) =>
+                        cache.put(event.request, responseClone)
                     );
                 }
-
                 return response;
             })
-            .catch(() =>
-                caches.match(
-                    event.request
-                )
-            )
+            .catch(() => caches.match(event.request))
     );
 });
 
-// 4. Background Push Listener
-self.addEventListener(
-    'push',
-    (event) => {
+// 4. Background Push Listener (Anti-Spam & Expiration Check)
+self.addEventListener('push', (event) => {
+    let data = {
+        title: "Campus Bus Alert",
+        message: "Bus status has been updated."
+    };
 
-        let data = {
-            title:
-                "Campus Bus Alert",
-
-            message:
-                "Bus status has been updated."
-        };
-
-        if (event.data) {
-            try {
-                data =
-                    event.data.json();
-            } catch (e) {
-                data.message =
-                    event.data.text();
-            }
+    if (event.data) {
+        try {
+            data = event.data.json();
+        } catch (e) {
+            data.message = event.data.text();
         }
-
-        const createdAt =
-            Number(data.createdAt) ||
-            Date.now();
-
-        const options = {
-            body:
-                data.message ||
-                data.body ||
-                "",
-
-            icon:
-                './logo.svg',
-
-            badge:
-                './logo.svg',
-
-            tag:
-                'seenmybus-broadcast',
-
-            renotify:
-                false,
-
-            requireInteraction:
-                false,
-
-            timestamp:
-                createdAt,
-
-            data: {
-                url:
-                    './index.html',
-
-                createdAt:
-                    createdAt
-            }
-        };
-
-        event.waitUntil(
-            self.registration.showNotification(
-                data.title,
-                options
-            )
-        );
     }
-);
 
-// 5. Notification Tap Action
-self.addEventListener(
-    'notificationclick',
-    (event) => {
+    const createdAt = Number(data.createdAt) || Date.now();
+    const MAX_AGE_MS = 20 * 60 * 1000; // 20 minutes expiration
 
-        event.notification.close();
-
-        event.waitUntil(
-            clients.matchAll({
-                type: 'window',
-                includeUncontrolled: true
-            }).then(
-                (clientsArr) => {
-
-                    if (
-                        clientsArr.length > 0
-                    ) {
-                        return clientsArr[0]
-                            .focus();
-                    }
-
-                    return clients.openWindow(
-                        './index.html'
-                    );
-                }
-            )
-        );
+    // Drop stale notifications if the device was offline/sleeping
+    if (Date.now() - createdAt > MAX_AGE_MS) {
+        return;
     }
-);
 
-// Listen for clicks on the push notifications
-self.addEventListener('notificationclick', function(event) {
+    const options = {
+        body: data.message || data.body || "",
+        icon: './logo.svg',
+        badge: './logo.svg',
+        tag: data.routeNum ? `bus-route-${data.routeNum}` : 'aju-bus-alert',
+        renotify: true,
+        requireInteraction: false,
+        timestamp: createdAt,
+        data: {
+            url: './index.html',
+            createdAt: createdAt
+        }
+    };
+
+    event.waitUntil(
+        self.registration.showNotification(data.title, options)
+    );
+});
+
+// 5. Notification Tap / Dismiss Action (Unified Single Listener)
+self.addEventListener('notificationclick', (event) => {
     event.notification.close();
 
-    // If the user clicked "Dismiss", do nothing
     if (event.action === 'dismiss') {
         return;
     }
 
-    // If they clicked "See Map" or tapped the main notification body, focus/open the app
     event.waitUntil(
-        clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function(clientList) {
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
             for (let i = 0; i < clientList.length; i++) {
                 let client = clientList[i];
                 if (client.url.includes('index.html') && 'focus' in client) {
@@ -213,4 +134,3 @@ self.addEventListener('notificationclick', function(event) {
         })
     );
 });
-
