@@ -176,14 +176,14 @@
         </div>
 
         <div id="fixed-footer" class="sheet-footer">
-            <button class="btn-primary" id="btn-update-bus">Update Bus Status</button>
+            <button class="btn-primary" id="btn-update-bus">Update a Bus</button>
         </div>
 
         <div id="selection-footer" class="sheet-footer hidden">
             <div id="step-3-summary" class="selection-summary"></div>
             <div style="display: flex; gap: 8px; width: 100%;">
                 <button class="btn-secondary" id="btn-prev-3" style="flex: 1;">Cancel</button>
-                <button class="btn-primary" id="btn-submit-update" style="flex: 2;">Confirm Parking Slot</button>
+                <button class="btn-primary" id="btn-submit-update" style="flex: 2;">Confirm</button>
             </div>
         </div>
 
@@ -193,25 +193,24 @@
                 <div class="tab-switcher">
                     <button class="tab-btn active" id="tab-park">
                         <svg class="ui-icon" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                        <span>Bus Parked</span>
+                        <span>Add to Map</span>
                     </button>
                     <button class="tab-btn" id="tab-depart">
                         <svg class="ui-icon" viewBox="0 0 24 24"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
-                        <span>Bus Departed</span>
+                        <span>Remove from Map</span>
                     </button>
                 </div>
 
                 <div id="flow-park">
                     <div id="step-1" class="step-container">
-                        <label class="form-label">Select Route Destination</label>
+                        <label class="form-label">Select a Route</label>
                         <select id="route-select" class="custom-select"></select>
-                        <button class="btn-primary" id="btn-next-1" style="margin-top: 16px;">Next: Pick Bus Number</button>
-                        <button class="btn-secondary" id="btn-skip-route" style="margin-top: 8px; height: 42px; font-size: 13px;">Spot Unassigned Bus</button>
+                        <button class="btn-primary" id="btn-next-1" style="margin-top: 16px;">Next</button>
                     </div>
 
                     <div id="step-2" class="step-container hidden">
                         <div id="step-2-summary" class="step-summary-badge"></div>
-                        <p class="section-subtext">Tap the bus number to place on the map:</p>
+                        <p class="section-subtext">Select the bus given for this route:</p>
                         <div id="bus-grid" class="bus-grid"></div>
                         <div class="modal-actions">
                             <button class="btn-secondary" id="btn-prev-2">Back</button>

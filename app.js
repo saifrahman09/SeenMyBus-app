@@ -1450,8 +1450,8 @@ const rSelect = document.getElementById('route-select');
 
 if (rSelect) {
     rSelect.innerHTML = `
-        <option value="" disabled selected>Select route destination...</option>
-        <option value="UNASSIGNED">Route Not Confirmed</option>
+        <option value="" disabled selected>Select a Route</option>
+        <option value="UNASSIGNED">Parked on Campus (Route Unknown)</option>
     `;
     allRoutes.forEach(r => {
         rSelect.innerHTML +=
@@ -1554,7 +1554,7 @@ function renderSimpleDepartList() {
                     stroke-width="2.5">
                     <polyline points="20 6 9 17 4 12"/>
                 </svg>
-                <span>Mark Departed</span>
+                <span>Remove from Map</span>
             </div>
         `;
 
@@ -1633,23 +1633,6 @@ async function executeFastUnassign(busNumber) {
     }
 }
 
-// --- 19. Park Flow with Conditional Step 3 ---
-if (document.getElementById('btn-skip-route')) {
-    document.getElementById('btn-skip-route').onclick = () => {
-        pendingUpdate.route = null;
-
-        if (s1) s1.classList.add('hidden');
-        if (s2) s2.classList.remove('hidden');
-
-        if (document.getElementById('step-2-summary')) {
-            document.getElementById('step-2-summary').textContent =
-                `Unassigned Buses`;
-        }
-
-        populateBusGrid(true);
-    };
-}
-
 if (document.getElementById('btn-next-1')) {
     document.getElementById('btn-next-1').onclick = () => {
         const selectedVal = rSelect.value;
@@ -1664,7 +1647,7 @@ if (document.getElementById('btn-next-1')) {
             if (s2) s2.classList.remove('hidden');
 
             if (document.getElementById('step-2-summary')) {
-                document.getElementById('step-2-summary').textContent = `Route Not Confirmed`;
+                document.getElementById('step-2-summary').textContent = `Parked on Campus (Route Unknown)`;
             }
             populateBusGrid(true); // Loads unassigned bus numbers only
         } else {
@@ -1862,7 +1845,7 @@ function goToMapSelection(isReplacement) {
         document.getElementById(
             'step-3-summary'
         ).innerHTML =
-            `Tap a slot on the map for <span style="color:#815FD7;">Bus ${pendingUpdate.busNo}</span> ${summaryStr}${extraText}`;
+            `Tap the exact spot where <span style="color:#815FD7;">Bus ${pendingUpdate.busNo}</span> is physically parked ${summaryStr}${extraText}`;
     }
 
     if (s3Confirm) {
@@ -2322,18 +2305,15 @@ if (document.getElementById('btn-submit-update')) {
 
                     const consensusStr =
                         numVoters === 1
-                            ? " Reported by 1 user only, so can be wrong :(("
+                            ? " Reported by 1 user only, so can be wrong :("
                             : "";
-
                     notificationUpdates[
                         notifId
                     ] = {
                         title:
-                            "🔄 Bus Swap Alert!",
-
+                            `Bus changed for ${targetRoute.name}`,
                         message:
                             `The bus for ${targetRoute.name} may have been changed from ${routeOldBus} to ${selectedBus}.${consensusStr}`,
-
                         createdAt:
                             Date.now()
                     };
@@ -2352,11 +2332,9 @@ if (document.getElementById('btn-submit-update')) {
                         notifId
                     ] = {
                         title:
-                            "📍 Bus Relocated!",
-
+                            `Bus ${selectedBus} Relocated`,
                         message:
-                            `Bus ${selectedBus} for ${targetRoute.name} moved to a new parking slot. Tap to find it!`,
-
+                            `Bus ${selectedBus} for ${targetRoute.name} moved to a new parking spot. Tap to find it!`,
                         createdAt:
                             Date.now()
                     };
