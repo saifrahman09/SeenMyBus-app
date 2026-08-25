@@ -71,24 +71,34 @@ self.addEventListener('activate', (e) => {
     );
 });
 
-// 3. Fetch Cache Strategy (Stale-While-Revalidate for local assets, bypass Firebase)
+// 3. Optimized Fetch Strategy (Lightweight & Fast)
 self.addEventListener('fetch', (e) => {
     if (e.request.method !== 'GET') return;
     
     const url = new URL(e.request.url);
     if (!url.origin.includes(self.location.origin) || url.protocol.startsWith('chrome-extension')) return;
 
+    // Skip heavy images from blocking the main thread cache
+    if (url.pathname.match(/\.(jpg|jpeg|png|gif|svg)$/)) {
+        e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+        return;
+    }
+
     e.respondWith(
         caches.match(e.request).then((cachedResponse) => {
             if (cachedResponse) {
-                fetch(e.request).then((networkResponse) => {
-                    if (networkResponse && networkResponse.status === 200) {
-                        caches.open(CACHE_NAME).then((cache) => cache.put(e.request, networkResponse));
-                    }
-                }).catch(() => {});
                 return cachedResponse;
             }
-            return fetch(e.request);
+            return fetch(e.request).then((response) => {
+                if (!response || response.status !== 200 || response.type !== 'basic') {
+                    return response;
+                }
+                const responseToCache = response.clone();
+                caches.open(CACHE_NAME).then((cache) => {
+                    cache.put(e.request, responseToCache);
+                });
+                return response;
+            });
         })
     );
 });
