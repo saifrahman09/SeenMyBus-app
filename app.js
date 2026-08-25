@@ -284,32 +284,32 @@ onValue(ref(db, 'broadcastNotifications'), (snap) => {
     if (!broadcasts) return;
 
     const now = Date.now();
-    const lastSeenTime = parseInt(localStorage.getItem('smb_last_broadcast_seen') || (now - 60000).toString(), 10);
-    let maxSeenTimestamp = lastSeenTime;
+    // Retrieve previously seen notification IDs to prevent duplicates
+    let processedNotifs = JSON.parse(localStorage.getItem('smb_processed_notifs') || '[]');
 
     Object.keys(broadcasts).forEach(notifId => {
         const item = broadcasts[notifId];
         if (!item || !item.createdAt) return;
 
-        const isNew = item.createdAt > lastSeenTime;
         const isFresh = (now - item.createdAt) <= MAX_NOTIF_AGE_MS;
         const isSelf = item.senderToken && item.senderToken === currentDeviceToken;
+        const isProcessed = processedNotifs.includes(notifId);
 
-        if (isNew && isFresh && !isSelf) {
+        // Only show if it's under 20 mins old, NOT sent by me, and I haven't seen it yet
+        if (isFresh && !isSelf && !isProcessed) {
             const cleanTag = item.routeName 
                 ? `bus-dest-${item.routeName.toLowerCase().replace(/\s+/g, '-')}` 
                 : `campus-alert-${notifId}`;
             sendLocalNotification(item.title || "Campus Bus Alert", item.message, cleanTag);
-        }
-
-        if (item.createdAt > maxSeenTimestamp) {
-            maxSeenTimestamp = item.createdAt;
+            
+            // Mark as seen
+            processedNotifs.push(notifId);
         }
     });
 
-    if (Notification.permission === "granted") {
-        localStorage.setItem('smb_last_broadcast_seen', maxSeenTimestamp.toString());
-    }
+    // Keep only the last 50 IDs to prevent filling up local storage
+    if (processedNotifs.length > 50) processedNotifs = processedNotifs.slice(-50);
+    localStorage.setItem('smb_processed_notifs', JSON.stringify(processedNotifs));
 });
 
 // --- 9. Smooth SVG Relocation Transit Animation ---
@@ -1277,12 +1277,22 @@ function focusOnSpot(spotId) {
 
     if (typeof showValidationCard === 'function') {
         const activeBusInfo = activeBuses.find(b => b.spotId === spotId);
-        
-        // 🌟 Only show validation bubble on Step 6 during the tour (Suppressed on Step 5!)
         const allowTourValidation = !window.isTourActive || currentTourStep === 6;
 
         if (activeBusInfo && appState === 'VIEW' && allowTourValidation) {
-            showValidationCard(activeBusInfo);
+            
+            // Check if current user is the author or has already voted
+            const voters = activeBusInfo.votersLedger || {};
+            const isAuthor = activeBusInfo.updatedBy === currentDeviceToken || activeBusInfo.updatedBy === ('ADMIN_' + currentDeviceToken);
+            const hasVoted = voters[currentDeviceToken] === true;
+
+            // Hide the card if they authored the update or already cast their vote
+            if (isAuthor || hasVoted) {
+                hideValidationCard();
+            } else {
+                showValidationCard(activeBusInfo);
+            }
+
         } else {
             hideValidationCard();
         }
@@ -1536,9 +1546,12 @@ function goToMapSelection(isReplacement) {
     appState = 'SELECTION';
 
     let summaryStr = pendingUpdate.route ? `(Route ${pendingUpdate.route.num})` : `(Unassigned Location)`;
-    let extraText = (!isReplacement && pendingUpdate.route)
-        ? `<br><span style="font-size:11.5px;color:#64748b;font-weight:600;line-height:1.5;display:block;margin-top:6px;">You are selecting an additional bus for ${pendingUpdate.route.name}</span>`
-        : '';
+    
+    // Add helpful text if the bus is already on the map
+    let extraText = '';
+    if (pendingUpdate.spotId) {
+        extraText = `<br><span style="font-size:12px;color:#16a34a;font-weight:700;line-height:1.5;display:block;margin-top:6px;">Bus already on map. If location is correct, just tap Confirm.</span>`;
+    }
 
     if (document.getElementById('step-3-summary')) {
         document.getElementById('step-3-summary').innerHTML = `Tap the exact spot where <span style="color:#815FD7;">Bus ${pendingUpdate.busNo}</span> is physically parked ${summaryStr}${extraText}`;
@@ -1552,12 +1565,47 @@ function goToMapSelection(isReplacement) {
     if (topBar) topBar.style.transform = `translateY(-150%)`;
     if (selFooter) selFooter.classList.remove('hidden');
 
-    scale = 1.6;
-    pointX = 0;
-    pointY = 0;
+    // Auto-center the map viewport on the bus if it already has a spot
+    if (pendingUpdate.spotId && mapElement && mapContainer) {
+        const spotGroup = document.getElementById(pendingUpdate.spotId);
+        const circle = spotGroup ? spotGroup.querySelector('circle') : null;
+        
+        if (circle) {
+            const cx = parseFloat(circle.getAttribute('cx'));
+            const cy = parseFloat(circle.getAttribute('cy'));
+            const contW = mapContainer.clientWidth;
+            const contH = mapContainer.clientHeight;
+            
+            const viewBox = mapElement.viewBox.baseVal;
+            const baseW = viewBox.width;
+            const baseH = viewBox.height;
+
+            const scaleRatio = Math.max(contW / baseW, contH / baseH);
+            const svgActualW = baseW * scaleRatio;
+            const svgActualH = baseH * scaleRatio;
+
+            const offsetX = (svgActualW - contW) / 2;
+            const offsetY = (svgActualH - contH) / 2;
+
+            const busPixelX = (cx * scaleRatio) - offsetX;
+            const busPixelY = (cy * scaleRatio) - offsetY;
+            
+            scale = 3.5;
+            pointX = (contW / 2) - (busPixelX * scale);
+            pointY = (contH * 0.45) - (busPixelY * scale);
+        } else {
+            scale = 1.6;
+            pointX = 0;
+            pointY = 0;
+        }
+    } else {
+        scale = 1.6;
+        pointX = 0;
+        pointY = 0;
+    }
 
     if (mapElement) {
-        mapElement.style.transition = 'transform 0.4s';
+        mapElement.style.transition = 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)';
         setTransform();
         setTimeout(() => { if (mapElement) mapElement.style.transition = 'none'; }, 400);
     }
