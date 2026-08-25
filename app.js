@@ -287,8 +287,10 @@ onValue(ref(db, 'broadcastNotifications'), (snap) => {
         const isSelf = item.senderToken && item.senderToken === currentDeviceToken;
 
         if (isNew && isFresh && !isSelf) {
-            const routeTag = item.routeNum ? `bus-route-${item.routeNum}` : `campus-alert-${notifId}`;
-            sendLocalNotification(item.title || "Campus Bus Alert", item.message, routeTag);
+            const cleanTag = item.routeName 
+                ? `bus-dest-${item.routeName.toLowerCase().replace(/\s+/g, '-')}` 
+                : `campus-alert-${notifId}`;
+            sendLocalNotification(item.title || "Campus Bus Alert", item.message, cleanTag);
         }
 
         if (item.createdAt > maxSeenTimestamp) {
@@ -1691,19 +1693,19 @@ if (document.getElementById('btn-submit-update')) {
                 existingBusesAtSpot.push(selectedBus);
                 existingVoters[currentDeviceToken] = true;
 
-                // Smart broadcast decision
+                // Smart broadcast decision (Destination-focused phrasing)
                 let notifTitle = null;
                 let notifMessage = null;
 
                 if (pendingUpdate.isReplacement && !isNewRoute && routeOldBus && routeOldBus !== selectedBus) {
-                    notifTitle = `Bus Changed: Route ${targetRoute.num}`;
-                    notifMessage = `Route ${targetRoute.num} (${targetRoute.name}) changed from Bus ${routeOldBus} to Bus ${selectedBus}.`;
+                    notifTitle = `Bus Changed for ${targetRoute.name}`;
+                    notifMessage = `Bus for ${targetRoute.name} has changed to Bus ${selectedBus}.`;
                 } else if (oldSpotForSelectedBus && oldSpotForSelectedBus !== targetSpot) {
-                    notifTitle = `Bus Relocated: Route ${targetRoute.num}`;
-                    notifMessage = `Bus ${selectedBus} (${targetRoute.name}) moved to ${targetSpot.replace('-', ' ').toUpperCase()}.`;
+                    notifTitle = `Bus Relocated: ${targetRoute.name}`;
+                    notifMessage = `Bus ${selectedBus} for ${targetRoute.name} moved to ${targetSpot.replace('-', ' ').toUpperCase()}.`;
                 } else if (isNewRoute) {
-                    notifTitle = `Bus Spotted: Route ${targetRoute.num}`;
-                    notifMessage = `Bus ${selectedBus} (${targetRoute.name}) is now parked at ${targetSpot.replace('-', ' ').toUpperCase()}.`;
+                    notifTitle = `Bus Spotted: ${targetRoute.name}`;
+                    notifMessage = `Bus ${selectedBus} to ${targetRoute.name} has moved to a new location on the map`;
                 }
 
                 if (notifTitle && notifMessage) {
@@ -1711,7 +1713,7 @@ if (document.getElementById('btn-submit-update')) {
                     notificationUpdates[notifId] = {
                         title: notifTitle,
                         message: notifMessage,
-                        routeNum: targetRoute.num,
+                        routeName: targetRoute.name,
                         createdAt: Date.now(),
                         senderToken: currentDeviceToken
                     };
