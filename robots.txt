@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://seenmybus.firebaseapp.com/sitemap.xml
