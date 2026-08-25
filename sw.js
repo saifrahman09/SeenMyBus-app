@@ -14,7 +14,7 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// 1. Dual-Engine Push Listener: Catches standard webpush on Mobile Android
+// 1. Unified Push Engine (Prevents Duplicate Alerts)
 self.addEventListener('push', (event) => {
     let payload = {};
     try {
@@ -31,8 +31,8 @@ self.addEventListener('push', (event) => {
 
     const notificationOptions = {
         body: body,
-        icon: './icon-192.png',
-        badge: './icon-192.png',
+        icon: './app-icon.png',    // App logo image
+        badge: './app-icon.png',   // Status bar small icon
         vibrate: [200, 100, 200],
         tag: `bus-dest-${routeTag}`,
         renotify: true,
@@ -44,23 +44,8 @@ self.addEventListener('push', (event) => {
     );
 });
 
-// 2. Firebase Background Handler fallback
-messaging.onBackgroundMessage((payload) => {
-    const notificationTitle = payload.notification?.title || "Campus Bus Alert";
-    const notificationOptions = {
-        body: payload.notification?.body || "",
-        icon: './icon-192.png',
-        badge: './icon-192.png',
-        tag: payload.data?.routeNum ? `bus-dest-${payload.data.routeNum}` : 'aju-bus-alert',
-        renotify: true,
-        data: { url: './index.html' }
-    };
-
-    self.registration.showNotification(notificationTitle, notificationOptions);
-});
-
-// BUMPED CACHE TO v12
-const CACHE_NAME = 'seenmybus-v12';
+// BUMPED CACHE TO v13
+const CACHE_NAME = 'seenmybus-v13';
 
 const STATIC_ASSETS = [
     './',
