@@ -31,8 +31,8 @@ self.addEventListener('push', (event) => {
 
     const notificationOptions = {
         body: body,
-        icon: './app-icon.png',    // App logo image
-        badge: './app-icon.png',   // Status bar small icon
+        icon: './app-icon.png',      // Full color app logo
+        badge: './badge-icon.png',   // Transparent cutout silhouette mask
         vibrate: [200, 100, 200],
         tag: `bus-dest-${routeTag}`,
         renotify: true,
@@ -45,7 +45,7 @@ self.addEventListener('push', (event) => {
 });
 
 // BUMPED CACHE TO v13
-const CACHE_NAME = 'seenmybus-v13';
+const CACHE_NAME = 'seenmybus-v14';
 
 const STATIC_ASSETS = [
     './',
@@ -54,6 +54,7 @@ const STATIC_ASSETS = [
     './main.css',
     './map.css',
     './logo.svg',
+    './badge-icon.png',
     './app-icon.png',
     './admin-dashboard.html',
     './manifest.json',
