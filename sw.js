@@ -20,8 +20,8 @@ messaging.onBackgroundMessage((payload) => {
     const notificationTitle = payload.notification.title;
     const notificationOptions = {
         body: payload.notification.body,
-        icon: './logo.svg',
-        badge: './logo.svg',
+        icon: './icon-192.png',
+        badge: './icon-192.png',
         tag: payload.data?.routeNum ? `bus-dest-${payload.data.routeNum}` : 'aju-bus-alert',
         data: { url: './index.html' }
     };
@@ -29,7 +29,8 @@ messaging.onBackgroundMessage((payload) => {
     self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
-const CACHE_NAME = 'seenmybus-v9';
+// BUMPED CACHE TO v11 to force the update
+const CACHE_NAME = 'seenmybus-v11';
 
 const STATIC_ASSETS = [
     './',
@@ -41,9 +42,9 @@ const STATIC_ASSETS = [
     './app-icon.png',
     './admin-dashboard.html',
     './manifest.json',
-    './onboarding-1.png',
-    './onboarding-2.png',
-    './onboarding-3.png',
+    './onboarding-1.jpg',
+    './onboarding-2.jpg',
+    './onboarding-3.jpg',
     './ArkaJainUniversityBusMap.xml',
     './faq.html',
     './terms-and-conditions.html',
@@ -92,29 +93,7 @@ self.addEventListener('fetch', (e) => {
     );
 });
 
-// 4. Background Server Push Listener (Fallback & Offline Drops)
-self.addEventListener('push', (event) => {
-    let data = { title: "Campus Bus Alert", message: "Bus status has been updated." };
-    if (event.data) {
-        try { data = event.data.json(); } catch (e) { data.message = event.data.text(); }
-    }
-
-    const createdAt = Number(data.createdAt) || Date.now();
-    if (Date.now() - createdAt > 20 * 60 * 1000) return; // Drop if > 20 mins old
-
-    const options = {
-        body: data.message || data.body || "",
-        icon: './logo.svg',
-        badge: './logo.svg',
-        tag: data.routeNum ? `bus-route-${data.routeNum}` : 'aju-bus-alert',
-        renotify: true,
-        data: { url: './index.html' }
-    };
-
-    event.waitUntil(self.registration.showNotification(data.title, options));
-});
-
-// 5. Handle Notification Tap / Click Focus
+// 4. Handle Notification Tap / Click Focus
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
     const targetUrl = (event.notification.data && event.notification.data.url) ? event.notification.data.url : './index.html';

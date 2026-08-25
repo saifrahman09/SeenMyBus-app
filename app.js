@@ -2222,3 +2222,14 @@ if (replayTourBtn) {
         window.showTourStep(1);
     };
 }
+
+// developer note collapse btn function
+
+const devNoteToggle = document.getElementById('dev-note-toggle');
+const devNoteCard = document.getElementById('dev-note-card');
+
+if (devNoteToggle && devNoteCard) {
+    devNoteToggle.onclick = () => {
+        devNoteCard.classList.toggle('collapsed');
+    };
+}
