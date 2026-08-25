@@ -975,6 +975,18 @@
 
             if (!message) return alert("Please type a notification message.");
 
+            // NEW: Ping Cloudflare Worker for Admin Broadcast
+            fetch('https://seenmybus-notifier.rahmansaif822.workers.dev/broadcast', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: title,
+                    message: message,
+                    routeName: "Admin Alert",
+                    sender: "ADMIN_" + currentDeviceToken
+                })
+            }).catch(e => console.error("Admin Worker ping failed", e));
+
             const notifUpdates = {};
             notifUpdates[Date.now().toString()] = {
                 title,

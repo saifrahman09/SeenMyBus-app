@@ -1,3 +1,5 @@
+import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-messaging.js";
+
 // Import Firebase modular SDKs via CDN
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
 import { getDatabase, ref, onValue, set, update, get, goOnline } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-database.js";
@@ -15,6 +17,7 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
+const messaging = getMessaging(app);
 
 // State Variables
 const mapContainer = document.getElementById('map-container');
@@ -216,19 +219,37 @@ async function loadUserRank() {
 function initNotificationSystem() {
     const notifBanner = document.getElementById('notif-banner');
     if (!notifBanner) return;
+    
     const isAsked = localStorage.getItem('smb_notif_asked');
     if (!isAsked && "Notification" in window && Notification.permission === 'default') {
         setTimeout(() => { if (!localStorage.getItem('smb_notif_asked')) notifBanner.classList.remove('hidden'); }, 15000);
     }
+    
     const allowBtn = document.getElementById('btn-allow-notif');
     if (allowBtn) {
-        allowBtn.onclick = () => {
-            Notification.requestPermission().then(() => {
-                localStorage.setItem('smb_notif_asked', 'true');
-                notifBanner.classList.add('hidden');
-            });
+        allowBtn.onclick = async () => {
+            try {
+                const permission = await Notification.requestPermission();
+                if (permission === 'granted') {
+                    localStorage.setItem('smb_notif_asked', 'true');
+                    notifBanner.classList.add('hidden');
+                    
+                    // Get FCM Token
+                    const fcmToken = await getToken(messaging, { 
+                        vapidKey: 'PASTE_YOUR_VAPID_KEY_HERE' // <--- Add your key from Phase 1
+                    });
+                    
+                    // Save Token to Database
+                    if (fcmToken) {
+                        await set(ref(db, `fcmTokens/${currentDeviceToken}`), fcmToken);
+                    }
+                }
+            } catch (err) {
+                console.error("FCM Token Error:", err);
+            }
         };
     }
+    
     const dismissBtn = document.getElementById('btn-dismiss-notif');
     if (dismissBtn) {
         dismissBtn.onclick = () => {
@@ -1767,6 +1788,8 @@ if (document.getElementById('btn-submit-update')) {
 
                 if (notifTitle && notifMessage) {
                     const notifId = Date.now().toString() + "_" + Math.random().toString(36).substr(2, 4);
+                    
+                    // 1. Still save to database for historical records
                     notificationUpdates[notifId] = {
                         title: notifTitle,
                         message: notifMessage,
@@ -1774,6 +1797,18 @@ if (document.getElementById('btn-submit-update')) {
                         createdAt: Date.now(),
                         senderToken: currentDeviceToken
                     };
+
+                    // 2. NEW: Ping Cloudflare Worker to wake up phones in pockets!
+                    fetch('https://seenmybus-notifier.rahmansaif822.workers.dev/broadcast', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            title: notifTitle,
+                            message: notifMessage,
+                            routeName: targetRoute.name,
+                            sender: currentDeviceToken
+                        })
+                    }).catch(e => console.error("Worker ping failed", e));
                 }
 
                 updates[`activeBuses/${targetSpot}`] = {

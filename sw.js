@@ -1,3 +1,34 @@
+// Import Firebase Service Worker SDKs
+importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js');
+
+// Initialize Firebase in the Service Worker
+firebase.initializeApp({
+    apiKey: "AIzaSyCXejNb5wgmZ6KJ3Q4r4BhBqw9KPn7iX5I",
+    authDomain: "seenmybus.firebaseapp.com",
+    projectId: "seenmybus",
+    storageBucket: "seenmybus.firebasestorage.app",
+    messagingSenderId: "352466758419",
+    appId: "1:352466758419:web:b86ed30eff7223910688e6"
+});
+
+const messaging = firebase.messaging();
+
+// Handle Background Messages from FCM
+messaging.onBackgroundMessage((payload) => {
+    console.log('[firebase-messaging-sw.js] Received background message ', payload);
+    const notificationTitle = payload.notification.title;
+    const notificationOptions = {
+        body: payload.notification.body,
+        icon: './logo.svg',
+        badge: './logo.svg',
+        tag: payload.data?.routeNum ? `bus-dest-${payload.data.routeNum}` : 'aju-bus-alert',
+        data: { url: './index.html' }
+    };
+
+    self.registration.showNotification(notificationTitle, notificationOptions);
+});
+
 const CACHE_NAME = 'seenmybus-v9';
 
 const STATIC_ASSETS = [
