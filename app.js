@@ -239,29 +239,34 @@ if (!localStorage.getItem('smb_last_broadcast_seen')) {
     localStorage.setItem('smb_last_broadcast_seen', (Date.now() - 60000).toString());
 }
 
-function sendLocalNotification(title, body, tag = "aju-bus-alert") {
+async function sendLocalNotification(title, body, tag = "aju-bus-alert") {
     if (!("Notification" in window) || Notification.permission !== "granted") return;
 
     const notifOptions = {
         body: body,
-        icon: "./logo.svg",
-        badge: "./logo.svg",
+        icon: "./icon-192.png",
+        badge: "./icon-192.png",
         vibrate: [200, 100, 200],
-        tag: tag, // Replaces previous notification for this specific route instead of stacking
+        tag: tag, // Replaces previous alerts for this specific route
         renotify: true,
         data: { url: './index.html' }
     };
 
-    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-        navigator.serviceWorker.ready.then(registration => {
-            registration.showNotification(title, notifOptions);
-        });
-    } else {
-        const notif = new Notification(title, notifOptions);
-        notif.onclick = function () {
-            window.focus();
-            this.close();
-        };
+    try {
+        if ('serviceWorker' in navigator) {
+            // Mobile-Safe: Always wait for Service Worker registration
+            const registration = await navigator.serviceWorker.ready;
+            await registration.showNotification(title, notifOptions);
+        } else {
+            // Desktop fallback
+            const notif = new Notification(title, notifOptions);
+            notif.onclick = function () {
+                window.focus();
+                this.close();
+            };
+        }
+    } catch (err) {
+        console.warn("Mobile notification dispatch error:", err);
     }
 }
 
@@ -270,7 +275,7 @@ onValue(ref(db, 'broadcastNotifications'), (snap) => {
     if (!broadcasts) return;
 
     const now = Date.now();
-    const lastSeenTime = parseInt(localStorage.getItem('smb_last_broadcast_seen') || '0', 10);
+    const lastSeenTime = parseInt(localStorage.getItem('smb_last_broadcast_seen') || (now - 60000).toString(), 10);
     let maxSeenTimestamp = lastSeenTime;
 
     Object.keys(broadcasts).forEach(notifId => {
@@ -279,9 +284,9 @@ onValue(ref(db, 'broadcastNotifications'), (snap) => {
 
         const isNew = item.createdAt > lastSeenTime;
         const isFresh = (now - item.createdAt) <= MAX_NOTIF_AGE_MS;
+        const isSelf = item.senderToken && item.senderToken === currentDeviceToken;
 
-        // Deliver only if it was posted after last app check AND is under 20 minutes old
-        if (isNew && isFresh) {
+        if (isNew && isFresh && !isSelf) {
             const routeTag = item.routeNum ? `bus-route-${item.routeNum}` : `campus-alert-${notifId}`;
             sendLocalNotification(item.title || "Campus Bus Alert", item.message, routeTag);
         }
@@ -291,7 +296,9 @@ onValue(ref(db, 'broadcastNotifications'), (snap) => {
         }
     });
 
-    localStorage.setItem('smb_last_broadcast_seen', maxSeenTimestamp.toString());
+    if (Notification.permission === "granted") {
+        localStorage.setItem('smb_last_broadcast_seen', maxSeenTimestamp.toString());
+    }
 });
 
 // --- 9. Smooth SVG Relocation Transit Animation ---
@@ -1561,8 +1568,8 @@ if (document.getElementById('btn-prev-3')) {
 if (document.getElementById('btn-submit-update')) {
     document.getElementById('btn-submit-update').onclick = async () => {
         if (!pendingUpdate.spotId) return alert("Tap a spot on the map!");
-
-        // 🛑 TOUR SAFEGUARD: Intercept click and advance tour without touching Firebase
+        
+        // TOUR SAFEGUARD: Intercept click and advance tour without touching Firebase
         if (window.isTourActive) {
             if (modal) modal.classList.add('hidden');
             if (selFooter) selFooter.classList.add('hidden');
@@ -1579,8 +1586,8 @@ if (document.getElementById('btn-submit-update')) {
         const targetSpot = pendingUpdate.spotId;
         const selectedBus = pendingUpdate.busNo;
         const targetRoute = pendingUpdate.route;
-
         appState = 'VIEW';
+
         if (selFooter) selFooter.classList.add('hidden');
         if (fixedFooter) fixedFooter.classList.remove('hidden');
         if (draggableSheet) draggableSheet.style.transform = `translateY(${currentTranslate}px)`;
@@ -1597,19 +1604,27 @@ if (document.getElementById('btn-submit-update')) {
             const updates = {};
             let notificationUpdates = {};
             const timestamp = Date.now();
+
             let routeOldBus = null;
             let isNewRoute = true;
             let oldSpotForSelectedBus = null;
 
-            if (targetRoute) {
-                Object.keys(activeData).forEach(sId => {
-                    if (activeData[sId] && activeData[sId].routeNum === targetRoute.num) {
-                        isNewRoute = false;
-                        routeOldBus = (activeData[sId].busNos || [activeData[sId].busNo])[0];
-                    }
-                });
-            }
+            // 1. Locate previous parking spot of this bus & check if route is active
+            Object.keys(activeData).forEach(sId => {
+                const item = activeData[sId];
+                if (!item) return;
+                const bList = item.busNos || (item.busNo ? [item.busNo] : []);
+                
+                if (bList.includes(selectedBus)) {
+                    oldSpotForSelectedBus = sId;
+                }
+                if (targetRoute && item.routeNum === targetRoute.num) {
+                    isNewRoute = false;
+                    routeOldBus = bList[0];
+                }
+            });
 
+            // Prevent occupying a slot assigned to a different route
             if (activeData[targetSpot]) {
                 const existingRouteNum = activeData[targetSpot].routeNum;
                 if ((targetRoute && existingRouteNum !== targetRoute.num) || !targetRoute) {
@@ -1619,6 +1634,7 @@ if (document.getElementById('btn-submit-update')) {
                 }
             }
 
+            // 2. Remove bus from its old slots across activeBuses
             Object.keys(activeData).forEach(sId => {
                 let spotData = activeData[sId];
                 let bList = spotData.busNos || (spotData.busNo ? [spotData.busNo] : []);
@@ -1650,10 +1666,12 @@ if (document.getElementById('btn-submit-update')) {
                 }
             });
 
+            // Remove from unassigned if present
             Object.keys(unData).forEach(sId => {
                 if (unData[sId].busNo === selectedBus) updates[`unassignedBuses/${sId}`] = null;
             });
 
+            // 3. Build Active Bus Slot Entry & Smart Broadcast Alerts
             if (targetRoute) {
                 let existingBusesAtSpot = [];
                 let existingVoters = {};
@@ -1673,21 +1691,29 @@ if (document.getElementById('btn-submit-update')) {
                 existingBusesAtSpot.push(selectedBus);
                 existingVoters[currentDeviceToken] = true;
 
+                // Smart broadcast decision
+                let notifTitle = null;
+                let notifMessage = null;
+
                 if (pendingUpdate.isReplacement && !isNewRoute && routeOldBus && routeOldBus !== selectedBus) {
-                    const notifId = Date.now().toString() + "_swap";
-                    const numVoters = existingVoters['admin_locked'] ? 999 : Object.keys(existingVoters).length;
-                    const consensusStr = numVoters === 1 ? " Reported by 1 user only, so can be wrong :(" : "";
-                    notificationUpdates[notifId] = {
-                        title: `Bus changed for ${targetRoute.name}`,
-                        message: `The bus for ${targetRoute.name} may have been changed from ${routeOldBus} to ${selectedBus}.${consensusStr}`,
-                        createdAt: Date.now()
-                    };
+                    notifTitle = `Bus Changed: Route ${targetRoute.num}`;
+                    notifMessage = `Route ${targetRoute.num} (${targetRoute.name}) changed from Bus ${routeOldBus} to Bus ${selectedBus}.`;
                 } else if (oldSpotForSelectedBus && oldSpotForSelectedBus !== targetSpot) {
-                    const notifId = Date.now().toString() + "_move";
+                    notifTitle = `Bus Relocated: Route ${targetRoute.num}`;
+                    notifMessage = `Bus ${selectedBus} (${targetRoute.name}) moved to ${targetSpot.replace('-', ' ').toUpperCase()}.`;
+                } else if (isNewRoute) {
+                    notifTitle = `Bus Spotted: Route ${targetRoute.num}`;
+                    notifMessage = `Bus ${selectedBus} (${targetRoute.name}) is now parked at ${targetSpot.replace('-', ' ').toUpperCase()}.`;
+                }
+
+                if (notifTitle && notifMessage) {
+                    const notifId = Date.now().toString() + "_" + Math.random().toString(36).substr(2, 4);
                     notificationUpdates[notifId] = {
-                        title: `Bus ${selectedBus} Relocated`,
-                        message: `Bus ${selectedBus} for ${targetRoute.name} moved to a new parking spot. Tap to find it!`,
-                        createdAt: Date.now()
+                        title: notifTitle,
+                        message: notifMessage,
+                        routeNum: targetRoute.num,
+                        createdAt: Date.now(),
+                        senderToken: currentDeviceToken
                     };
                 }
 
