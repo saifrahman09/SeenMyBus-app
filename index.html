@@ -26,14 +26,24 @@
 <meta name="twitter:image" content="https://seenmybus.firebaseapp.com/app-icon.png">
 
 
+<!-- Canonical & Open Graph -->
+<link rel="canonical" href="https://seenmybus.netlify.app/">
+<meta property="og:url" content="https://seenmybus.netlify.app/">
+
+<!-- Complete WebApplication Schema -->
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
   "@type": "WebApplication",
   "name": "SeenMyBus",
-  "url": "https://seenmybus.firebaseapp.com/",
+  "url": "https://seenmybus.netlify.app/",
   "applicationCategory": "TransportationApplication",
   "operatingSystem": "All",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "INR"
+  },
   "description": "A real-time crowdsourced campus bus locator and route parking tracking system designed for students of Arka Jain University, Jamshedpur.",
   "creator": {
     "@type": "Person",
