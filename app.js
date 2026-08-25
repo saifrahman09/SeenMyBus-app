@@ -1,6 +1,4 @@
 import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-messaging.js";
-
-// Import Firebase modular SDKs via CDN
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
 import { getDatabase, ref, onValue, set, update, get, goOnline } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-database.js";
 
@@ -178,7 +176,7 @@ function getCurrentCycleKey() {
 }
 
 async function addContributionPoints(points = 10) {
-    if (window.isTourActive) return; // 🛑 Block tour points from polluting real user profiles
+    if (window.isTourActive) return;
     const cycleKey = getCurrentCycleKey();
     const userRef = ref(db, `userProfiles/${currentDeviceToken}/${cycleKey}`);
     try {
@@ -236,8 +234,6 @@ async function registerFCMToken() {
 
 function initNotificationSystem() {
     const notifBanner = document.getElementById('notif-banner');
-    
-    // If permission is already granted on this phone, sync token immediately
     if ("Notification" in window && Notification.permission === 'granted') {
         registerFCMToken();
         return;
@@ -277,15 +273,17 @@ function initNotificationSystem() {
     }
 }
 
+// Single-instance foreground FCM listener
+onMessage(messaging, (payload) => {
+    if (!payload) return;
+    const title = payload.notification?.title || "Campus Bus Alert";
+    const body = payload.notification?.body || "";
+    const route = payload.data?.routeNum || "alert";
+    sendLocalNotification(title, body, `bus-dest-${route}`);
+});
 
-
-// --- 8. Anti-Spam Real-Time Notification System ---
-const MAX_NOTIF_AGE_MS = 20 * 60 * 1000; // 20 minutes expiration window
-
-// Initialize baseline timestamp on first launch to block historical notification dumps
-if (!localStorage.getItem('smb_last_broadcast_seen')) {
-    localStorage.setItem('smb_last_broadcast_seen', (Date.now() - 60000).toString());
-}
+// Anti-Spam & Initial-Load Gatekeeper
+const pageLoadTimestamp = Date.now();
 
 async function sendLocalNotification(title, body, tag = "aju-bus-alert") {
     if (!("Notification" in window) || Notification.permission !== "granted") return;
@@ -295,18 +293,16 @@ async function sendLocalNotification(title, body, tag = "aju-bus-alert") {
         icon: "./icon-192.png",
         badge: "./icon-192.png",
         vibrate: [200, 100, 200],
-        tag: tag, // Replaces previous alerts for this specific route
+        tag: tag,
         renotify: true,
         data: { url: './index.html' }
     };
 
     try {
         if ('serviceWorker' in navigator) {
-            // Mobile-Safe: Always wait for Service Worker registration
             const registration = await navigator.serviceWorker.ready;
             await registration.showNotification(title, notifOptions);
         } else {
-            // Desktop fallback
             const notif = new Notification(title, notifOptions);
             notif.onclick = function () {
                 window.focus();
@@ -314,7 +310,7 @@ async function sendLocalNotification(title, body, tag = "aju-bus-alert") {
             };
         }
     } catch (err) {
-        console.warn("Mobile notification dispatch error:", err);
+        console.warn("Notification dispatch error:", err);
     }
 }
 
@@ -323,30 +319,30 @@ onValue(ref(db, 'broadcastNotifications'), (snap) => {
     if (!broadcasts) return;
 
     const now = Date.now();
-    // Retrieve previously seen notification IDs to prevent duplicates
     let processedNotifs = JSON.parse(localStorage.getItem('smb_processed_notifs') || '[]');
 
     Object.keys(broadcasts).forEach(notifId => {
         const item = broadcasts[notifId];
         if (!item || !item.createdAt) return;
 
-        const isFresh = (now - item.createdAt) <= MAX_NOTIF_AGE_MS;
+        // Block old historical dumps on initial page load
+        const isCreatedAfterLoad = item.createdAt >= (pageLoadTimestamp - 30000);
+        const isFresh = (now - item.createdAt) <= (5 * 60 * 1000);
         const isSelf = item.senderToken && item.senderToken === currentDeviceToken;
         const isProcessed = processedNotifs.includes(notifId);
 
-        // Only show if it's under 20 mins old, NOT sent by me, and I haven't seen it yet
-        if (isFresh && !isSelf && !isProcessed) {
+        if (isFresh && isCreatedAfterLoad && !isSelf && !isProcessed) {
             const cleanTag = item.routeName 
                 ? `bus-dest-${item.routeName.toLowerCase().replace(/\s+/g, '-')}` 
                 : `campus-alert-${notifId}`;
             sendLocalNotification(item.title || "Campus Bus Alert", item.message, cleanTag);
-            
-            // Mark as seen
+            processedNotifs.push(notifId);
+        } else if (!isProcessed) {
+            // Silently mark older notifications as processed without alerting
             processedNotifs.push(notifId);
         }
     });
 
-    // Keep only the last 50 IDs to prevent filling up local storage
     if (processedNotifs.length > 50) processedNotifs = processedNotifs.slice(-50);
     localStorage.setItem('smb_processed_notifs', JSON.stringify(processedNotifs));
 });
@@ -546,7 +542,6 @@ function createUnassignedDataSignature(data) {
 }
 
 function handleBusesData(data) {
-    // TOUR SAFEGUARD: Inject Adityapur, Bistupur & Mango Chauk during tour
     if (window.isTourActive) {
         data = {
             'spot-15': { busNo: "04", busNos: ["04"], routeNum: "6", name: "Adityapur", users: 1, updatedAt: 1700000000000, updatedBy: 'tour' },
@@ -1130,7 +1125,6 @@ function selectListRoute(routeKey, spotId = null, fromMap = false) {
     const container = document.getElementById('bus-list');
     if (!container || !routeKey) return;
 
-    // 🌟 TOUR PROGRESSION: Tapping ANY bus in list advances from Step 8 to Step 9
     if (window.isTourActive && currentTourStep === 8 && !fromMap) {
         setTimeout(() => {
             if (typeof hideValidationCard === 'function') hideValidationCard();
@@ -1319,19 +1313,15 @@ function focusOnSpot(spotId) {
         const allowTourValidation = !window.isTourActive || currentTourStep === 6;
 
         if (activeBusInfo && appState === 'VIEW' && allowTourValidation) {
-            
-            // Check if current user is the author or has already voted
             const voters = activeBusInfo.votersLedger || {};
             const isAuthor = activeBusInfo.updatedBy === currentDeviceToken || activeBusInfo.updatedBy === ('ADMIN_' + currentDeviceToken);
             const hasVoted = voters[currentDeviceToken] === true;
 
-            // Hide the card if they authored the update or already cast their vote
             if (isAuthor || hasVoted) {
                 hideValidationCard();
             } else {
                 showValidationCard(activeBusInfo);
             }
-
         } else {
             hideValidationCard();
         }
@@ -1441,7 +1431,7 @@ function renderSimpleDepartList() {
 }
 
 async function executeFastUnassign(busNumber) {
-    if (window.isTourActive) return; // 🛑 Block tour departures from altering production database
+    if (window.isTourActive) return;
     try {
         const [snapActive, snapUn] = await Promise.all([
             get(ref(db, 'activeBuses')),
@@ -1586,7 +1576,6 @@ function goToMapSelection(isReplacement) {
 
     let summaryStr = pendingUpdate.route ? `(Route ${pendingUpdate.route.num})` : `(Unassigned Location)`;
     
-    // Add helpful text if the bus is already on the map
     let extraText = '';
     if (pendingUpdate.spotId) {
         extraText = `<br><span style="font-size:12px;color:#16a34a;font-weight:700;line-height:1.5;display:block;margin-top:6px;">Bus already on map. If location is correct, just tap Confirm.</span>`;
@@ -1604,7 +1593,6 @@ function goToMapSelection(isReplacement) {
     if (topBar) topBar.style.transform = `translateY(-150%)`;
     if (selFooter) selFooter.classList.remove('hidden');
 
-    // Auto-center the map viewport on the bus if it already has a spot
     if (pendingUpdate.spotId && mapElement && mapContainer) {
         const spotGroup = document.getElementById(pendingUpdate.spotId);
         const circle = spotGroup ? spotGroup.querySelector('circle') : null;
@@ -1667,7 +1655,6 @@ if (document.getElementById('btn-submit-update')) {
     document.getElementById('btn-submit-update').onclick = async () => {
         if (!pendingUpdate.spotId) return alert("Tap a spot on the map!");
         
-        // TOUR SAFEGUARD: Intercept click and advance tour without touching Firebase
         if (window.isTourActive) {
             if (modal) modal.classList.add('hidden');
             if (selFooter) selFooter.classList.add('hidden');
@@ -1707,7 +1694,6 @@ if (document.getElementById('btn-submit-update')) {
             let isNewRoute = true;
             let oldSpotForSelectedBus = null;
 
-            // 1. Locate previous parking spot of this bus & check if route is active
             Object.keys(activeData).forEach(sId => {
                 const item = activeData[sId];
                 if (!item) return;
@@ -1722,7 +1708,6 @@ if (document.getElementById('btn-submit-update')) {
                 }
             });
 
-            // Prevent occupying a slot assigned to a different route
             if (activeData[targetSpot]) {
                 const existingRouteNum = activeData[targetSpot].routeNum;
                 if ((targetRoute && existingRouteNum !== targetRoute.num) || !targetRoute) {
@@ -1732,7 +1717,6 @@ if (document.getElementById('btn-submit-update')) {
                 }
             }
 
-            // 2. Remove bus from its old slots across activeBuses
             Object.keys(activeData).forEach(sId => {
                 let spotData = activeData[sId];
                 let bList = spotData.busNos || (spotData.busNo ? [spotData.busNo] : []);
@@ -1764,12 +1748,10 @@ if (document.getElementById('btn-submit-update')) {
                 }
             });
 
-            // Remove from unassigned if present
             Object.keys(unData).forEach(sId => {
                 if (unData[sId].busNo === selectedBus) updates[`unassignedBuses/${sId}`] = null;
             });
 
-            // 3. Build Active Bus Slot Entry & Smart Broadcast Alerts
             if (targetRoute) {
                 let existingBusesAtSpot = [];
                 let existingVoters = {};
@@ -1789,25 +1771,18 @@ if (document.getElementById('btn-submit-update')) {
                 existingBusesAtSpot.push(selectedBus);
                 existingVoters[currentDeviceToken] = true;
 
-                // Smart broadcast decision (Destination-focused phrasing)
+                // Smart broadcast decision: Only trigger on actual bus replacement
                 let notifTitle = null;
                 let notifMessage = null;
 
                 if (pendingUpdate.isReplacement && !isNewRoute && routeOldBus && routeOldBus !== selectedBus) {
                     notifTitle = `Bus Changed for ${targetRoute.name}`;
                     notifMessage = `Bus for ${targetRoute.name} has changed to Bus ${selectedBus}.`;
-                } else if (oldSpotForSelectedBus && oldSpotForSelectedBus !== targetSpot) {
-                    notifTitle = `Bus Relocated: ${targetRoute.name}`;
-                    notifMessage = `Bus ${selectedBus} for ${targetRoute.name} moved to ${targetSpot.replace('-', ' ').toUpperCase()}.`;
-                } else if (isNewRoute) {
-                    notifTitle = `Bus Spotted: ${targetRoute.name}`;
-                    notifMessage = `Bus ${selectedBus} to ${targetRoute.name} has moved to a new location on the map`;
                 }
 
                 if (notifTitle && notifMessage) {
                     const notifId = Date.now().toString() + "_" + Math.random().toString(36).substr(2, 4);
                     
-                    // 1. Still save to database for historical records
                     notificationUpdates[notifId] = {
                         title: notifTitle,
                         message: notifMessage,
@@ -1816,7 +1791,6 @@ if (document.getElementById('btn-submit-update')) {
                         senderToken: currentDeviceToken
                     };
 
-                    // 2. NEW: Ping Cloudflare Worker to wake up phones in pockets!
                     fetch('https://seenmybus-notifier.rahmansaif822.workers.dev/broadcast', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -2047,7 +2021,6 @@ window.showTourStep = function(stepNum) {
     
     overlay.classList.remove('hidden');
     
-    // Switch to Transparent UI Mode on Step 5+
     if (stepNum >= 5) {
         overlay.classList.add('app-visible');
         const fsContainer = document.getElementById('tour-fs-container');
@@ -2062,7 +2035,6 @@ window.showTourStep = function(stepNum) {
         if (spotContainer) spotContainer.classList.add('hidden');
     }
 
-    // Carousel Slide Logic (1 to 4)
     if (stepNum <= 4) {
         document.querySelectorAll('.tour-fs-slide').forEach(el => {
             const s = parseInt(el.dataset.step);
@@ -2072,7 +2044,6 @@ window.showTourStep = function(stepNum) {
         });
     }
 
-    // Spotlight Card Logic (5 to 10)
     if (stepNum >= 5) {
         document.querySelectorAll('.tour-spotlight-step').forEach(el => {
             if (parseInt(el.dataset.step) === stepNum) el.classList.remove('hidden');
@@ -2080,7 +2051,6 @@ window.showTourStep = function(stepNum) {
         });
     }
 
-    // Clear old visual targets and listeners
     document.querySelectorAll('.tour-target-glow').forEach(el => el.classList.remove('tour-target-glow'));
     document.querySelectorAll('.tour-target-html').forEach(el => el.classList.remove('tour-target-html'));
     
@@ -2089,21 +2059,18 @@ window.showTourStep = function(stepNum) {
         window.tourMapListeners = [];
     }
 
-    // STEP 5: Clean Zoom directly into Adityapur (Spot 15)
     if (stepNum === 5) {
         window.isTourActive = true;
-        window.forceTourRefresh(); // Inject mock buses
+        window.forceTourRefresh();
 
-        // Ensure validation bubble stays completely hidden during Step 5
         if (typeof hideValidationCard === 'function') hideValidationCard();
 
         setTimeout(() => {
-            focusOnSpot('spot-15'); // Camera zooms smoothly without opening card
+            focusOnSpot('spot-15');
 
             const adityapurSpot = document.getElementById('spot-15');
             if (adityapurSpot) adityapurSpot.classList.add('tour-target-glow');
 
-            // Allow clicking ANY bus on map to transition cleanly to Step 6
             window.tourMapListeners = [];
             ['spot-15', 'spot-03', 'spot-07'].forEach(sId => {
                 const el = document.getElementById(sId);
@@ -2111,7 +2078,6 @@ window.showTourStep = function(stepNum) {
                     const listener = () => {
                         if (adityapurSpot) adityapurSpot.classList.remove('tour-target-glow');
                         
-                        // Advance to Step 6 and open validation card for the tapped bus
                         setTimeout(() => {
                             window.nextTourStep();
                             const busInfo = activeBuses.find(b => b.spotId === sId);
@@ -2127,7 +2093,6 @@ window.showTourStep = function(stepNum) {
         }, 500);
     }
 
-    // STEP 6: Highlight YES/NO buttons on validation card
     if (stepNum === 6) {
         setTimeout(() => {
             const btnYes = document.getElementById('btn-val-yes');
@@ -2137,13 +2102,11 @@ window.showTourStep = function(stepNum) {
         }, 500);
     }
 
-    // STEP 7: Highlight Search Bar
     if (stepNum === 7) {
         const searchInput = document.getElementById('search-input');
         if (searchInput) searchInput.classList.add('tour-target-html');
     }
 
-    // STEP 8: Highlight Adityapur item prominently in the list
     if (stepNum === 8) {
         setTimeout(() => {
             const listEl = document.querySelector('#bus-list .bus-item[data-route-key="route_6_Adityapur"]') 
@@ -2152,7 +2115,6 @@ window.showTourStep = function(stepNum) {
         }, 300);
     }
 
-    // STEP 9: Highlight Update Bus FAB
     if (stepNum === 9) {
         const btnUpdate = document.getElementById('btn-update-bus');
         if (btnUpdate) {
@@ -2167,7 +2129,6 @@ window.showTourStep = function(stepNum) {
 };
 
 window.nextTourStep = function() {
-    // 🌟 Clean up any active glows or validation bubble before jumping to next step
     if (typeof hideValidationCard === 'function') hideValidationCard();
     document.querySelectorAll('.tour-target-glow').forEach(el => el.classList.remove('tour-target-glow'));
     document.querySelectorAll('.tour-target-html').forEach(el => el.classList.remove('tour-target-html'));
@@ -2185,7 +2146,6 @@ window.finishTour = function() {
     localStorage.setItem('smb_tour_completed', 'true');
     window.isTourActive = false;
     
-    // 🌟 Purge all dummy data signatures and cache
     lastActiveDataSignature = null;
     lastUnassignedDataSignature = null;
     activeBuses = [];
@@ -2193,17 +2153,14 @@ window.finishTour = function() {
     busLocationTracker = {};
     routeLocationTracker = {};
 
-    // 🌟 Refresh live production Firebase data immediately
     window.forceTourRefresh();
     
-    // Cleanup UI
     const overlay = document.getElementById('onboarding-overlay');
     if (overlay) overlay.classList.add('hidden');
     const modal = document.getElementById('modal-overlay');
     if (modal) modal.classList.add('hidden');
     if (typeof hideValidationCard === 'function') hideValidationCard();
 
-    // Trigger post-tour cookie and notification banners
     if (typeof window.triggerPostTourConsents === 'function') {
         window.triggerPostTourConsents();
     }
@@ -2223,8 +2180,7 @@ if (replayTourBtn) {
     };
 }
 
-// developer note collapse btn function
-
+// Developer Note Collapse Toggle
 const devNoteToggle = document.getElementById('dev-note-toggle');
 const devNoteCard = document.getElementById('dev-note-card');
 

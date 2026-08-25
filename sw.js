@@ -14,23 +14,53 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// Handle Background Messages from FCM
-messaging.onBackgroundMessage((payload) => {
-    console.log('[firebase-messaging-sw.js] Received background message ', payload);
-    const notificationTitle = payload.notification.title;
+// 1. Dual-Engine Push Listener: Catches standard webpush on Mobile Android
+self.addEventListener('push', (event) => {
+    let payload = {};
+    try {
+        payload = event.data ? event.data.json() : {};
+    } catch (e) {
+        payload = { notification: { title: "Campus Bus Alert", body: event.data ? event.data.text() : "" } };
+    }
+
+    const title = payload.notification?.title || payload.data?.title || "Campus Bus Alert";
+    const body = payload.notification?.body || payload.data?.message || payload.data?.body || "";
+    const routeTag = payload.data?.routeNum || "general";
+
+    if (!body && !payload.notification?.title) return;
+
     const notificationOptions = {
-        body: payload.notification.body,
+        body: body,
+        icon: './icon-192.png',
+        badge: './icon-192.png',
+        vibrate: [200, 100, 200],
+        tag: `bus-dest-${routeTag}`,
+        renotify: true,
+        data: { url: './index.html' }
+    };
+
+    event.waitUntil(
+        self.registration.showNotification(title, notificationOptions)
+    );
+});
+
+// 2. Firebase Background Handler fallback
+messaging.onBackgroundMessage((payload) => {
+    const notificationTitle = payload.notification?.title || "Campus Bus Alert";
+    const notificationOptions = {
+        body: payload.notification?.body || "",
         icon: './icon-192.png',
         badge: './icon-192.png',
         tag: payload.data?.routeNum ? `bus-dest-${payload.data.routeNum}` : 'aju-bus-alert',
+        renotify: true,
         data: { url: './index.html' }
     };
 
     self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
-// BUMPED CACHE TO v11 to force the update
-const CACHE_NAME = 'seenmybus-v11';
+// BUMPED CACHE TO v12
+const CACHE_NAME = 'seenmybus-v12';
 
 const STATIC_ASSETS = [
     './',
@@ -51,7 +81,6 @@ const STATIC_ASSETS = [
     './privacy-policy.html'
 ];
 
-// 1. Install & Pre-cache
 self.addEventListener('install', (e) => {
     e.waitUntil(
         caches.open(CACHE_NAME).then((cache) => {
@@ -60,7 +89,6 @@ self.addEventListener('install', (e) => {
     );
 });
 
-// 2. Activate & Clean Old Caches + Claim Clients Immediately
 self.addEventListener('activate', (e) => {
     e.waitUntil(
         caches.keys().then((keys) => {
@@ -71,14 +99,11 @@ self.addEventListener('activate', (e) => {
     );
 });
 
-// 3. Optimized Fetch Strategy (Lightweight & Fast)
 self.addEventListener('fetch', (e) => {
     if (e.request.method !== 'GET') return;
-    
     const url = new URL(e.request.url);
     if (!url.origin.includes(self.location.origin) || url.protocol.startsWith('chrome-extension')) return;
 
-    // Skip heavy images from blocking the main thread cache
     if (url.pathname.match(/\.(jpg|jpeg|png|gif|svg)$/)) {
         e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
         return;
@@ -86,24 +111,17 @@ self.addEventListener('fetch', (e) => {
 
     e.respondWith(
         caches.match(e.request).then((cachedResponse) => {
-            if (cachedResponse) {
-                return cachedResponse;
-            }
+            if (cachedResponse) return cachedResponse;
             return fetch(e.request).then((response) => {
-                if (!response || response.status !== 200 || response.type !== 'basic') {
-                    return response;
-                }
+                if (!response || response.status !== 200 || response.type !== 'basic') return response;
                 const responseToCache = response.clone();
-                caches.open(CACHE_NAME).then((cache) => {
-                    cache.put(e.request, responseToCache);
-                });
+                caches.open(CACHE_NAME).then((cache) => cache.put(e.request, responseToCache));
                 return response;
             });
         })
     );
 });
 
-// 4. Handle Notification Tap / Click Focus
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
     const targetUrl = (event.notification.data && event.notification.data.url) ? event.notification.data.url : './index.html';
@@ -115,9 +133,7 @@ self.addEventListener('notificationclick', (event) => {
                     return client.focus();
                 }
             }
-            if (clients.openWindow) {
-                return clients.openWindow(targetUrl);
-            }
+            if (clients.openWindow) return clients.openWindow(targetUrl);
         })
     );
 });
