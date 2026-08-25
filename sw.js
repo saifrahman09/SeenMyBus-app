@@ -1,4 +1,4 @@
-const CACHE_NAME = 'seenmybus-v8';
+const CACHE_NAME = 'seenmybus-v9';
 
 const STATIC_ASSETS = [
     './',
@@ -7,6 +7,9 @@ const STATIC_ASSETS = [
     './main.css',
     './map.css',
     './logo.svg',
+    './app-icon.png',
+    './admin-dashboard.html',
+    './manifest.json',
     './onboarding-1.png',
     './onboarding-2.png',
     './onboarding-3.png',
@@ -16,82 +19,57 @@ const STATIC_ASSETS = [
     './privacy-policy.html'
 ];
 
-// 1. Install - Pre-cache essential static assets
-self.addEventListener('install', (event) => {
-    event.waitUntil(
+// 1. Install & Pre-cache
+self.addEventListener('install', (e) => {
+    e.waitUntil(
         caches.open(CACHE_NAME).then((cache) => {
             return cache.addAll(STATIC_ASSETS);
-        })
+        }).then(() => self.skipWaiting())
     );
-    self.skipWaiting();
 });
 
-// 2. Activate - Clean up old cache versions
-self.addEventListener('activate', (event) => {
-    event.waitUntil(
+// 2. Activate & Clean Old Caches + Claim Clients Immediately
+self.addEventListener('activate', (e) => {
+    e.waitUntil(
         caches.keys().then((keys) => {
             return Promise.all(
-                keys
-                    .filter((key) => key !== CACHE_NAME)
-                    .map((key) => caches.delete(key))
+                keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
             );
         }).then(() => self.clients.claim())
     );
 });
 
-// 3. Fetch - Cache-first for static files, bypass Firebase & WebSockets
-self.addEventListener('fetch', (event) => {
-    const url = event.request.url;
+// 3. Fetch Cache Strategy (Stale-While-Revalidate for local assets, bypass Firebase)
+self.addEventListener('fetch', (e) => {
+    if (e.request.method !== 'GET') return;
+    
+    const url = new URL(e.request.url);
+    if (!url.origin.includes(self.location.origin) || url.protocol.startsWith('chrome-extension')) return;
 
-    if (
-        url.includes('firebaseio.com') ||
-        url.startsWith('chrome-extension') ||
-        event.request.method !== 'GET'
-    ) {
-        return;
-    }
-
-    event.respondWith(
-        fetch(event.request)
-            .then((response) => {
-                if (
-                    response &&
-                    response.status === 200 &&
-                    response.type === 'basic'
-                ) {
-                    const responseClone = response.clone();
-                    caches.open(CACHE_NAME).then((cache) =>
-                        cache.put(event.request, responseClone)
-                    );
-                }
-                return response;
-            })
-            .catch(() => caches.match(event.request))
+    e.respondWith(
+        caches.match(e.request).then((cachedResponse) => {
+            if (cachedResponse) {
+                fetch(e.request).then((networkResponse) => {
+                    if (networkResponse && networkResponse.status === 200) {
+                        caches.open(CACHE_NAME).then((cache) => cache.put(e.request, networkResponse));
+                    }
+                }).catch(() => {});
+                return cachedResponse;
+            }
+            return fetch(e.request);
+        })
     );
 });
 
-// 4. Background Push Listener (Anti-Spam & Expiration Check)
+// 4. Background Server Push Listener (Fallback & Offline Drops)
 self.addEventListener('push', (event) => {
-    let data = {
-        title: "Campus Bus Alert",
-        message: "Bus status has been updated."
-    };
-
+    let data = { title: "Campus Bus Alert", message: "Bus status has been updated." };
     if (event.data) {
-        try {
-            data = event.data.json();
-        } catch (e) {
-            data.message = event.data.text();
-        }
+        try { data = event.data.json(); } catch (e) { data.message = event.data.text(); }
     }
 
     const createdAt = Number(data.createdAt) || Date.now();
-    const MAX_AGE_MS = 20 * 60 * 1000; // 20 minutes expiration
-
-    // Drop stale notifications if the device was offline/sleeping
-    if (Date.now() - createdAt > MAX_AGE_MS) {
-        return;
-    }
+    if (Date.now() - createdAt > 20 * 60 * 1000) return; // Drop if > 20 mins old
 
     const options = {
         body: data.message || data.body || "",
@@ -99,37 +77,26 @@ self.addEventListener('push', (event) => {
         badge: './logo.svg',
         tag: data.routeNum ? `bus-route-${data.routeNum}` : 'aju-bus-alert',
         renotify: true,
-        requireInteraction: false,
-        timestamp: createdAt,
-        data: {
-            url: './index.html',
-            createdAt: createdAt
-        }
+        data: { url: './index.html' }
     };
 
-    event.waitUntil(
-        self.registration.showNotification(data.title, options)
-    );
+    event.waitUntil(self.registration.showNotification(data.title, options));
 });
 
-// 5. Notification Tap / Dismiss Action (Unified Single Listener)
+// 5. Handle Notification Tap / Click Focus
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
-
-    if (event.action === 'dismiss') {
-        return;
-    }
+    const targetUrl = (event.notification.data && event.notification.data.url) ? event.notification.data.url : './index.html';
 
     event.waitUntil(
-        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
-            for (let i = 0; i < clientList.length; i++) {
-                let client = clientList[i];
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+            for (let client of windowClients) {
                 if (client.url.includes('index.html') && 'focus' in client) {
                     return client.focus();
                 }
             }
             if (clients.openWindow) {
-                return clients.openWindow('./index.html');
+                return clients.openWindow(targetUrl);
             }
         })
     );
