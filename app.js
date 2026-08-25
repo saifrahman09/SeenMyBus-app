@@ -215,14 +215,41 @@ async function loadUserRank() {
     } catch (e) {}
 }
 
-// --- 8. Notification System ---
+// --- 8. Notification System & FCM Token Auto-Registration ---
+async function registerFCMToken() {
+    if (!("Notification" in window) || Notification.permission !== "granted") return;
+    try {
+        const registration = await navigator.serviceWorker.ready;
+        const fcmToken = await getToken(messaging, { 
+            vapidKey: 'BPgf5onxNHlQiYFzQ3Q03IHvYKe22Yuu1JahIj9MQkvl5XwadaViZOAAVXCV_tmqhwWlq2vfZe1T0ybd9PGhLsI',
+            serviceWorkerRegistration: registration
+        });
+        
+        if (fcmToken) {
+            await set(ref(db, `fcmTokens/${currentDeviceToken}`), fcmToken);
+            console.log("FCM Token successfully synced to database:", fcmToken);
+        }
+    } catch (err) {
+        console.error("FCM Token Registration Error:", err);
+    }
+}
+
 function initNotificationSystem() {
     const notifBanner = document.getElementById('notif-banner');
-    if (!notifBanner) return;
+    
+    // If permission is already granted on this phone, sync token immediately
+    if ("Notification" in window && Notification.permission === 'granted') {
+        registerFCMToken();
+        return;
+    }
     
     const isAsked = localStorage.getItem('smb_notif_asked');
     if (!isAsked && "Notification" in window && Notification.permission === 'default') {
-        setTimeout(() => { if (!localStorage.getItem('smb_notif_asked')) notifBanner.classList.remove('hidden'); }, 15000);
+        setTimeout(() => { 
+            if (!localStorage.getItem('smb_notif_asked') && notifBanner) {
+                notifBanner.classList.remove('hidden'); 
+            }
+        }, 8000);
     }
     
     const allowBtn = document.getElementById('btn-allow-notif');
@@ -232,20 +259,11 @@ function initNotificationSystem() {
                 const permission = await Notification.requestPermission();
                 if (permission === 'granted') {
                     localStorage.setItem('smb_notif_asked', 'true');
-                    notifBanner.classList.add('hidden');
-                    
-                    // Get FCM Token
-                    const fcmToken = await getToken(messaging, { 
-                        vapidKey: 'PASTE_YOUR_VAPID_KEY_HERE' // <--- Add your key from Phase 1
-                    });
-                    
-                    // Save Token to Database
-                    if (fcmToken) {
-                        await set(ref(db, `fcmTokens/${currentDeviceToken}`), fcmToken);
-                    }
+                    if (notifBanner) notifBanner.classList.add('hidden');
+                    await registerFCMToken();
                 }
             } catch (err) {
-                console.error("FCM Token Error:", err);
+                console.error("Permission error:", err);
             }
         };
     }
@@ -254,7 +272,7 @@ function initNotificationSystem() {
     if (dismissBtn) {
         dismissBtn.onclick = () => {
             localStorage.setItem('smb_notif_asked', 'true');
-            notifBanner.classList.add('hidden');
+            if (notifBanner) notifBanner.classList.add('hidden');
         };
     }
 }
