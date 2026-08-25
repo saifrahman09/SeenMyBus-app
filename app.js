@@ -40,18 +40,27 @@ window.ignoreMapTap = false;
 
 // Routes & Slots Registry
 const allRoutes = [
-    { num: "6", name: "Adityapur" }, { num: "7", name: "Mango chauk" },
-    { num: "3", name: "Bistupur" }, { num: "9", name: "Dhatkidih" },
-    { num: "5", name: "Telco Colony" }, { num: "2", name: "Lal Building" }
+    { num: "1", name: "Sonari" }, { num: "2", name: "Hudco" },
+    { num: "3", name: "Telco" }, { num: "4", name: "New Baridih" },
+    { num: "6", name: "Station" }, { num: "9", name: "Chepapul (Mango)" },
+    { num: "10", name: "Dimna Chowk" }, { num: "11", name: "Hostel" },
 ];
-const allBuses = ["01", "02", "03", "04", "05", "10", "15", "19", "22", "25", "29", "30"];
+
+const allBuses = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10",
+  "11", "12", "13", "14", "15", "16", "17", "18", "19", "20",
+  "21", "22", "23", "24", "25", "26", "27", "28", "29", "30",
+  "31", "32", "33", "34", "35", "36", "37", "38", "39", "40",
+  "41", "42", "43", "44", "45"];
 const allSpots = [
     "spot-01", "spot-02", "spot-03", "spot-04", "spot-05",
     "spot-06", "spot-07", "spot-08", "spot-09", "spot-10",
     "spot-11", "spot-12", "spot-13", "spot-14", "spot-15",
     "spot-16", "spot-17", "spot-18", "spot-19", "spot-20",
     "spot-21", "spot-22", "spot-23", "spot-24", "spot-25",
-    "spot-26", "spot-27"
+    "spot-26", "spot-27", "spot-28", "spot-29", "spot-30",
+    "spot-31", "spot-32", "spot-33", "spot-34", "spot-35",
+    "spot-36", "spot-37", "spot-38", "spot-39", "spot-40",
+    "spot-41"
 ];
 
 // --- 1. Background Service Worker Registration ---
@@ -503,7 +512,7 @@ function handleBusesData(data) {
         data = {
             'spot-15': { busNo: "04", busNos: ["04"], routeNum: "6", name: "Adityapur", users: 1, updatedAt: 1700000000000, updatedBy: 'tour' },
             'spot-03': { busNo: "25", busNos: ["25"], routeNum: "3", name: "Bistupur", users: 1, updatedAt: 1700000000000, updatedBy: 'tour' },
-            'spot-07': { busNo: "22", busNos: ["22"], routeNum: "7", name: "Mango chauk", users: 1, updatedAt: 1700000000000, updatedBy: 'tour' }
+            'spot-07': { busNo: "22", busNos: ["22"], routeNum: "7", name: "Mango chowk", users: 1, updatedAt: 1700000000000, updatedBy: 'tour' }
         };
     }
     
