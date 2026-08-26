@@ -1,20 +1,7 @@
-// Import Firebase Service Worker SDKs
-importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js');
+// BUMPED CACHE TO v18 FOR SINGLE-NOTIFICATION FIX
+const CACHE_NAME = 'seenmybus-v18';
 
-// Initialize Firebase in the Service Worker
-firebase.initializeApp({
-    apiKey: "AIzaSyCXejNb5wgmZ6KJ3Q4r4BhBqw9KPn7iX5I",
-    authDomain: "seenmybus.firebaseapp.com",
-    projectId: "seenmybus",
-    storageBucket: "seenmybus.firebasestorage.app",
-    messagingSenderId: "352466758419",
-    appId: "1:352466758419:web:b86ed30eff7223910688e6"
-});
-
-const messaging = firebase.messaging();
-
-// 1. Unified Push Engine (Prevents Duplicate Alerts)
+// 1. PURE WEB PUSH ENGINE (No Firebase SDK overlap causing duplicates)
 self.addEventListener('push', (event) => {
     let payload = {};
     try {
@@ -31,10 +18,10 @@ self.addEventListener('push', (event) => {
 
     const notificationOptions = {
         body: body,
-        icon: './app-icon.png',      // Full color app logo
-        badge: './badge-icon.png',   // Transparent cutout silhouette mask
+        icon: './app-icon.png',      
+        badge: './badge-icon.png',   
         vibrate: [200, 100, 200],
-        tag: `bus-dest-${routeTag}`,
+        tag: `bus-dest-${routeTag}`, // Replaces old notifications for the same route
         renotify: true,
         data: { url: './index.html' }
     };
@@ -44,13 +31,11 @@ self.addEventListener('push', (event) => {
     );
 });
 
-// BUMPED CACHE TO v13
-const CACHE_NAME = 'seenmybus-v14';
-
 const STATIC_ASSETS = [
     './',
     './index.html',
     './app.js',
+    './config.js',
     './main.css',
     './map.css',
     './logo.svg',
@@ -69,41 +54,35 @@ const STATIC_ASSETS = [
 
 self.addEventListener('install', (e) => {
     e.waitUntil(
-        caches.open(CACHE_NAME).then((cache) => {
-            return cache.addAll(STATIC_ASSETS);
-        }).then(() => self.skipWaiting())
+        caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS)).then(() => self.skipWaiting())
     );
 });
 
 self.addEventListener('activate', (e) => {
     e.waitUntil(
         caches.keys().then((keys) => {
-            return Promise.all(
-                keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
-            );
+            return Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)));
         }).then(() => self.clients.claim())
     );
 });
 
+// PURE STALE-WHILE-REVALIDATE STRATEGY 
 self.addEventListener('fetch', (e) => {
     if (e.request.method !== 'GET') return;
     const url = new URL(e.request.url);
-    if (!url.origin.includes(self.location.origin) || url.protocol.startsWith('chrome-extension')) return;
 
-    if (url.pathname.match(/\.(jpg|jpeg|png|gif|svg)$/)) {
-        e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
-        return;
-    }
+    if (url.protocol.startsWith('chrome-extension')) return;
+    if (url.hostname.includes('firebasedatabase.app') || url.hostname.includes('workers.dev')) return;
 
     e.respondWith(
         caches.match(e.request).then((cachedResponse) => {
-            if (cachedResponse) return cachedResponse;
-            return fetch(e.request).then((response) => {
-                if (!response || response.status !== 200 || response.type !== 'basic') return response;
-                const responseToCache = response.clone();
-                caches.open(CACHE_NAME).then((cache) => cache.put(e.request, responseToCache));
-                return response;
-            });
+            const fetchPromise = fetch(e.request).then((networkResponse) => {
+                if (networkResponse && networkResponse.status === 200 && (networkResponse.type === 'basic' || networkResponse.type === 'cors')) {
+                    caches.open(CACHE_NAME).then((cache) => cache.put(e.request, networkResponse.clone()));
+                }
+                return networkResponse;
+            }).catch(() => {}); 
+            return cachedResponse || fetchPromise;
         })
     );
 });

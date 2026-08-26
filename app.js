@@ -1,6 +1,7 @@
 import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-messaging.js";
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
 import { getDatabase, ref, onValue, set, update, get, goOnline } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-database.js";
+import { ALL_ROUTES, ALL_BUSES, ALL_SPOTS } from "./config.js";
 
 // --- FIREBASE CONFIGURATION ---
 const firebaseConfig = {
@@ -39,36 +40,11 @@ let mapViewportInitialized = false;
 // Ghost Click Protector
 window.ignoreMapTap = false; 
 
-// Routes & Slots Registry
-const allRoutes = [
-    { num: "1", name: "Sonari" }, { num: "2", name: "Hudco" },
-    { num: "3", name: "Telco" }, { num: "4", name: "New Baridih" },
-    { num: "6", name: "Station" }, { num: "9", name: "Chepapul (Mango)" },
-    { num: "10", name: "Dimna Chowk" }, { num: "11", name: "Hostel" },
-];
-
-const allBuses = ["01", "02", "03", "04", "05", "06", "07", "08", "09", "10",
-  "11", "12", "13", "14", "15", "16", "17", "18", "19", "20",
-  "21", "22", "23", "24", "25", "26", "27", "28", "29", "30",
-  "31", "32", "33", "34", "35", "36", "37", "38", "39", "40",
-  "41", "42", "43", "44", "45"];
-const allSpots = [
-    "spot-01", "spot-02", "spot-03", "spot-04", "spot-05",
-    "spot-06", "spot-07", "spot-08", "spot-09", "spot-10",
-    "spot-11", "spot-12", "spot-13", "spot-14", "spot-15",
-    "spot-16", "spot-17", "spot-18", "spot-19", "spot-20",
-    "spot-21", "spot-22", "spot-23", "spot-24", "spot-25",
-    "spot-26", "spot-27", "spot-28", "spot-29", "spot-30",
-    "spot-31", "spot-32", "spot-33", "spot-34", "spot-35",
-    "spot-36", "spot-37", "spot-38", "spot-39", "spot-40",
-    "spot-41"
-];
-
 // --- 1. Background Service Worker Registration ---
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').then(registration => {
         registration.update();
-    }).catch(err => console.log("SW Registration bypassed:", err));
+    }).catch(err => console.warn("SW Registration:", err));
 }
 
 // --- 2. Admin Visibility Check ---
@@ -153,6 +129,21 @@ document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') goOnline(db);
 });
 
+// Back-Forward Cache (bfcache) Reset
+window.addEventListener('pageshow', (event) => {
+    if (event.persisted || performance.getEntriesByType("navigation")[0]?.type === "back_forward") {
+        currentTranslate = 0;
+        if (draggableSheet) {
+            draggableSheet.style.transition = 'transform 0.3s ease';
+            draggableSheet.style.transform = 'translateY(0px)';
+        }
+        if (fixedFooter) fixedFooter.classList.remove('hidden');
+        if (topBar) topBar.style.transform = 'translateY(0)';
+        appState = 'VIEW';
+        if (mapElement) renderMapSpots();
+    }
+});
+
 // --- 6. Splash Screen Dismissal ---
 function hideSplashScreen() {
     const splash = document.getElementById('splash-screen');
@@ -210,10 +201,12 @@ async function loadUserRank() {
         const snap = await get(ref(db, `userProfiles/${currentDeviceToken}/${getCurrentCycleKey()}`));
         const data = snap.val() || { score: 0 };
         updateRankDisplay(data.score || 0);
-    } catch (e) {}
+    } catch (e) {
+        console.warn("User rank load error:", e);
+    }
 }
 
-// --- 8. Notification System & FCM Token Auto-Registration ---
+// --- 8. Notification System & FCM Registration ---
 async function registerFCMToken() {
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     try {
@@ -225,7 +218,6 @@ async function registerFCMToken() {
         
         if (fcmToken) {
             await set(ref(db, `fcmTokens/${currentDeviceToken}`), fcmToken);
-            console.log("FCM Token successfully synced to database:", fcmToken);
         }
     } catch (err) {
         console.error("FCM Token Registration Error:", err);
@@ -272,80 +264,6 @@ function initNotificationSystem() {
         };
     }
 }
-
-// Single-instance foreground FCM listener
-onMessage(messaging, (payload) => {
-    if (!payload) return;
-    const title = payload.notification?.title || "Campus Bus Alert";
-    const body = payload.notification?.body || "";
-    const route = payload.data?.routeNum || "alert";
-    sendLocalNotification(title, body, `bus-dest-${route}`);
-});
-
-// Anti-Spam & Initial-Load Gatekeeper
-const pageLoadTimestamp = Date.now();
-
-async function sendLocalNotification(title, body, tag = "aju-bus-alert") {
-    if (!("Notification" in window) || Notification.permission !== "granted") return;
-
-    const notifOptions = {
-        body: body,
-        icon: "./icon-192.png",
-        badge: "./icon-192.png",
-        vibrate: [200, 100, 200],
-        tag: tag,
-        renotify: true,
-        data: { url: './index.html' }
-    };
-
-    try {
-        if ('serviceWorker' in navigator) {
-            const registration = await navigator.serviceWorker.ready;
-            await registration.showNotification(title, notifOptions);
-        } else {
-            const notif = new Notification(title, notifOptions);
-            notif.onclick = function () {
-                window.focus();
-                this.close();
-            };
-        }
-    } catch (err) {
-        console.warn("Notification dispatch error:", err);
-    }
-}
-
-onValue(ref(db, 'broadcastNotifications'), (snap) => {
-    const broadcasts = snap.val();
-    if (!broadcasts) return;
-
-    const now = Date.now();
-    let processedNotifs = JSON.parse(localStorage.getItem('smb_processed_notifs') || '[]');
-
-    Object.keys(broadcasts).forEach(notifId => {
-        const item = broadcasts[notifId];
-        if (!item || !item.createdAt) return;
-
-        // Block old historical dumps on initial page load
-        const isCreatedAfterLoad = item.createdAt >= (pageLoadTimestamp - 30000);
-        const isFresh = (now - item.createdAt) <= (5 * 60 * 1000);
-        const isSelf = item.senderToken && item.senderToken === currentDeviceToken;
-        const isProcessed = processedNotifs.includes(notifId);
-
-        if (isFresh && isCreatedAfterLoad && !isSelf && !isProcessed) {
-            const cleanTag = item.routeName 
-                ? `bus-dest-${item.routeName.toLowerCase().replace(/\s+/g, '-')}` 
-                : `campus-alert-${notifId}`;
-            sendLocalNotification(item.title || "Campus Bus Alert", item.message, cleanTag);
-            processedNotifs.push(notifId);
-        } else if (!isProcessed) {
-            // Silently mark older notifications as processed without alerting
-            processedNotifs.push(notifId);
-        }
-    });
-
-    if (processedNotifs.length > 50) processedNotifs = processedNotifs.slice(-50);
-    localStorage.setItem('smb_processed_notifs', JSON.stringify(processedNotifs));
-});
 
 // --- 9. Smooth SVG Relocation Transit Animation ---
 function getSpotCoordinates(spotId) {
@@ -504,7 +422,10 @@ fetch('./ArkaJainUniversityBusMap.xml')
             });
         }
     })
-    .catch(err => { hideSplashScreen(); });
+    .catch(err => { 
+        console.error("Map fetch error:", err);
+        hideSplashScreen(); 
+    });
 
 function getFilteredBuses() {
     if (!currentSearchQuery) return activeBuses;
@@ -515,7 +436,7 @@ function getFilteredBuses() {
     );
 }
 
-// --- 13. Realtime & Auto-Refresh Syncing ---
+// --- 13. Realtime Syncing (Pure Push WebSocket) ---
 function createActiveDataSignature(data) {
     if (!data) return '';
     return Object.keys(data).sort().map(spotId => {
@@ -626,27 +547,22 @@ function handleUnassignedData(data) {
     if (appState === 'VIEW' && mapElement) renderMapSpots();
 }
 
-onValue(ref(db, 'activeBuses'), (snapshot) => { try { handleBusesData(snapshot.val()); } catch (err) {} });
-onValue(ref(db, 'unassignedBuses'), (snapshot) => { try { handleUnassignedData(snapshot.val()); } catch (e) {} });
-
-setInterval(async () => {
-    try {
-        const snapActive = await get(ref(db, 'activeBuses'));
-        handleBusesData(snapActive.val());
-        const snapUn = await get(ref(db, 'unassignedBuses'));
-        handleUnassignedData(snapUn.val());
-    } catch (e) {}
-}, 5000);
+onValue(ref(db, 'activeBuses'), (snapshot) => { 
+    try { handleBusesData(snapshot.val()); } catch (err) { console.error(err); } 
+});
+onValue(ref(db, 'unassignedBuses'), (snapshot) => { 
+    try { handleUnassignedData(snapshot.val()); } catch (e) { console.error(e); } 
+});
 
 function getUnassignedBusNumbers() {
     const assigned = new Set();
     activeBuses.forEach(ab => ab.busNos.forEach(b => assigned.add(b)));
-    return allBuses.filter(bNo => !assigned.has(bNo));
+    return ALL_BUSES.filter(bNo => !assigned.has(bNo));
 }
 
 // --- 14. Map Render Logic ---
 function renderMapSpots() {
-    allSpots.forEach(spotId => {
+    ALL_SPOTS.forEach(spotId => {
         const g = document.getElementById(spotId);
         if (!g) return;
 
@@ -748,7 +664,7 @@ function renderMapSpots() {
                     }
                 }
                 
-                allSpots.forEach(s => {
+                ALL_SPOTS.forEach(s => {
                     const sg = document.getElementById(s);
                     if (!sg) return;
                     sg.classList.remove('spot-yellow', 'spot-deep-green');
@@ -1052,7 +968,7 @@ if (mapContainer) {
     });
 }
 
-// --- 16. Bus List UI & Highlight ---
+// --- 16. Optimized Bus List UI (Single Reflow DocumentFragment) ---
 function getGroupedRoutes(buses) {
     const routeMap = {};
 
@@ -1177,7 +1093,7 @@ function renderList(buses) {
     if (emptyState) emptyState.classList.add('hidden');
 
     const orderedRoutes = buildStableListOrder(groupedRoutes);
-    container.innerHTML = '';
+    const fragment = document.createDocumentFragment();
 
     orderedRoutes.forEach(item => {
         const div = document.createElement('div');
@@ -1231,9 +1147,11 @@ function renderList(buses) {
             }
         });
 
-        container.appendChild(div);
+        fragment.appendChild(div);
     });
 
+    container.innerHTML = '';
+    container.appendChild(fragment);
     applyListSelection(container);
 }
 
@@ -1349,7 +1267,7 @@ if (rSelect) {
         <option value="" disabled selected>Select a Route</option>
         <option value="UNASSIGNED">Parked on Campus (Route Unknown)</option>
     `;
-    allRoutes.forEach(r => {
+    ALL_ROUTES.forEach(r => {
         rSelect.innerHTML += `<option value="${r.num}">Route ${r.num} - ${r.name}</option>`;
     });
 }
@@ -1478,7 +1396,7 @@ if (document.getElementById('btn-next-1')) {
             }
             populateBusGrid(true);
         } else {
-            pendingUpdate.route = allRoutes.find(r => r.num === selectedVal);
+            pendingUpdate.route = ALL_ROUTES.find(r => r.num === selectedVal);
             if (s1) s1.classList.add('hidden');
             if (s2) s2.classList.remove('hidden');
             if (document.getElementById('step-2-summary') && pendingUpdate.route) {
@@ -1492,7 +1410,7 @@ if (document.getElementById('btn-next-1')) {
 function populateBusGrid(isUnassignedMode) {
     if (!grid) return;
     grid.innerHTML = '';
-    const busesToShow = isUnassignedMode ? getUnassignedBusNumbers() : allBuses;
+    const busesToShow = isUnassignedMode ? getUnassignedBusNumbers() : ALL_BUSES;
 
     if (busesToShow.length === 0) {
         grid.innerHTML = `<p style="grid-column:1/-1;text-align:center;color:#727272;font-size:13px;">All buses parked.</p>`;
@@ -1771,7 +1689,6 @@ if (document.getElementById('btn-submit-update')) {
                 existingBusesAtSpot.push(selectedBus);
                 existingVoters[currentDeviceToken] = true;
 
-                // Smart broadcast decision: Only trigger on actual bus replacement
                 let notifTitle = null;
                 let notifMessage = null;
 
@@ -1965,7 +1882,7 @@ if (btnValNo) {
         if (modal) modal.classList.remove('hidden');
         switchTab('PARK');
 
-        pendingUpdate.route = allRoutes.find(r => r.num === targetBus.routeNum) || null;
+        pendingUpdate.route = ALL_ROUTES.find(r => r.num === targetBus.routeNum) || null;
         pendingUpdate.busNo = (targetBus.busNos && targetBus.busNos[0]) || targetBus.busNo || null;
         pendingUpdate.spotId = targetBus.spotId;
         pendingUpdate.isReplacement = false;
@@ -1991,10 +1908,11 @@ if (btnValNo) {
     };
 }
 
-// --- INTERACTIVE ONBOARDING CONTROLLER ---
+// --- INTERACTIVE ONBOARDING CONTROLLER (Clean AbortController) ---
 let currentTourStep = 1;
 const totalTourSteps = 10;
 window.isTourActive = false;
+let tourAbortController = new AbortController();
 
 window.forceTourRefresh = async function() {
     try {
@@ -2054,10 +1972,10 @@ window.showTourStep = function(stepNum) {
     document.querySelectorAll('.tour-target-glow').forEach(el => el.classList.remove('tour-target-glow'));
     document.querySelectorAll('.tour-target-html').forEach(el => el.classList.remove('tour-target-html'));
     
-    if (window.tourMapListeners) {
-        window.tourMapListeners.forEach(({ el, fn }) => el && el.removeEventListener('click', fn));
-        window.tourMapListeners = [];
-    }
+    // Cleanly abort previous step listeners
+    tourAbortController.abort();
+    tourAbortController = new AbortController();
+    const signal = tourAbortController.signal;
 
     if (stepNum === 5) {
         window.isTourActive = true;
@@ -2071,13 +1989,11 @@ window.showTourStep = function(stepNum) {
             const adityapurSpot = document.getElementById('spot-15');
             if (adityapurSpot) adityapurSpot.classList.add('tour-target-glow');
 
-            window.tourMapListeners = [];
             ['spot-15', 'spot-03', 'spot-07'].forEach(sId => {
                 const el = document.getElementById(sId);
                 if (el) {
-                    const listener = () => {
+                    el.addEventListener('click', () => {
                         if (adityapurSpot) adityapurSpot.classList.remove('tour-target-glow');
-                        
                         setTimeout(() => {
                             window.nextTourStep();
                             const busInfo = activeBuses.find(b => b.spotId === sId);
@@ -2085,9 +2001,7 @@ window.showTourStep = function(stepNum) {
                                 showValidationCard(busInfo);
                             }
                         }, 300);
-                    };
-                    el.addEventListener('click', listener, { once: true });
-                    window.tourMapListeners.push({ el, fn: listener });
+                    }, { once: true, signal });
                 }
             });
         }, 500);
@@ -2119,11 +2033,10 @@ window.showTourStep = function(stepNum) {
         const btnUpdate = document.getElementById('btn-update-bus');
         if (btnUpdate) {
             btnUpdate.classList.add('tour-target-html');
-            const tourUpdateListener = () => {
+            btnUpdate.addEventListener('click', () => {
                 btnUpdate.classList.remove('tour-target-html');
                 setTimeout(() => window.nextTourStep(), 400);
-            };
-            btnUpdate.addEventListener('click', tourUpdateListener, { once: true });
+            }, { once: true, signal });
         }
     }
 };
@@ -2145,6 +2058,7 @@ window.skipTour = function() { window.finishTour(); };
 window.finishTour = function() {
     localStorage.setItem('smb_tour_completed', 'true');
     window.isTourActive = false;
+    tourAbortController.abort();
     
     lastActiveDataSignature = null;
     lastUnassignedDataSignature = null;
