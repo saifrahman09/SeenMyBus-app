@@ -2,22 +2,18 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://seenmybus.netlify.app/</loc>
-    <lastmod>2026-08-25</lastmod>
     <priority>1.00</priority>
   </url>
   <url>
     <loc>https://seenmybus.netlify.app/faq.html</loc>
-    <lastmod>2026-08-25</lastmod>
-    <priority>0.80</priority>
-  </url>
-  <url>
-    <loc>https://seenmybus.netlify.app/terms-and-conditions.html</loc>
-    <lastmod>2026-08-25</lastmod>
-    <priority>0.50</priority>
+    <priority>0.70</priority>
   </url>
   <url>
     <loc>https://seenmybus.netlify.app/privacy-policy.html</loc>
-    <lastmod>2026-08-25</lastmod>
-    <priority>0.50</priority>
+    <priority>0.30</priority>
+  </url>
+  <url>
+    <loc>https://seenmybus.netlify.app/terms-and-conditions.html</loc>
+    <priority>0.30</priority>
   </url>
 </urlset>
