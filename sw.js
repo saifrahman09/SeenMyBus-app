@@ -41,7 +41,6 @@ const STATIC_ASSETS = [
     './logo.svg',
     './badge-icon.png',
     './app-icon.png',
-    './offline-page.jpg',
     './admin-dashboard.html',
     './manifest.json',
     './onboarding-1.jpg',

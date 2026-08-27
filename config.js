@@ -2,13 +2,17 @@
 
 export const ALL_ROUTES = [
     { num: "1", name: "Sonari" },
-    { num: "2", name: "Hudco" },
-    { num: "3", name: "Telco" },
+    { num: "1", name: "Kadma" },
+    { num: "2", name: "Telco (Anna Chowk)" },
+    { num: "2", name: "Telco (Chandih Chowk)" },
     { num: "4", name: "New Baridih" },
-    { num: "6", name: "Station" },
+    { num: "4", name: "Mercy Hospital" },
+    { num: "6", name: "R.D. Tata Square (Station)" },
+    { num: "6", name: "Khasmahal (Station)" },
     { num: "9", name: "Chepapul (Mango)" },
     { num: "10", name: "Dimna Chowk" },
-    { num: "11", name: "Hostel" }
+    { num: "11", name: "Girls' Hostel (Adityapur)" },
+    { num: "11", name: "Boys' Hostel (Adityapur)" },
 ];
 
 // Generate bus numbers "01" to "45" dynamically
