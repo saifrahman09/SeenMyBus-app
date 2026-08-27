@@ -95,6 +95,26 @@
     <div id="splash-screen">
         <img src="./logo.svg" alt="SeenMyBus Logo" class="splash-logo">
     </div>
+
+    <!--Offline Screen with Custom Image -->
+        <div id="offline-screen" class="hidden">
+            <div class="offline-card">
+                <div class="offline-img-wrapper">
+                    <img src="./offline-page.jpg" alt="You seem offline" class="offline-img">
+                </div>
+                
+                <h3>Oops! You seem offline</h3>
+                <p>Please check your internet connection and try again.</p>
+                
+                <button id="btn-retry-network" class="btn-retry-yellow">
+                    <span>Retry Connection</span>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="23 4 23 10 17 10"></polyline>
+                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
     
     <div id="app-container">
         <div id="consent-banner" class="hidden">
@@ -158,7 +178,7 @@
 
         <div class="top-bar">
             <div class="search-container">
-                <input type="text" id="search-input" placeholder='Search "bus 22" or "Adityapur"'>
+                <input type="text" id="search-input" placeholder='Try typing "Hostel" or "22"'>
             </div>
             <a href="./admin-dashboard.html" id="admin-top-btn" class="admin-top-btn hidden" title="Admin Portal" aria-label="Admin Portal">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">

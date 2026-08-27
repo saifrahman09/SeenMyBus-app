@@ -1,5 +1,5 @@
 // BUMPED CACHE TO v18 FOR SINGLE-NOTIFICATION FIX
-const CACHE_NAME = 'seenmybus-v18';
+const CACHE_NAME = 'seenmybus-v19';
 
 // 1. PURE WEB PUSH ENGINE (No Firebase SDK overlap causing duplicates)
 self.addEventListener('push', (event) => {
@@ -41,6 +41,7 @@ const STATIC_ASSETS = [
     './logo.svg',
     './badge-icon.png',
     './app-icon.png',
+    './offline-page.jpg',
     './admin-dashboard.html',
     './manifest.json',
     './onboarding-1.jpg',

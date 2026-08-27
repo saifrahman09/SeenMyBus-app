@@ -427,3 +427,91 @@ body, html {
     color: #FCB041;
     background: rgba(252, 176, 65, 0.08);
 }
+
+/* --- OFFLINE SCREEN WITH CUSTOM ARTWORK --- */
+#offline-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100dvh;
+    background: #F8F6FC;
+    z-index: 999999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 24px;
+    box-sizing: border-box;
+}
+
+#offline-screen.hidden {
+    display: none !important;
+}
+
+.offline-card {
+    background: #FFFFFF;
+    border-radius: 32px;
+    padding: 28px 22px;
+    text-align: center;
+    max-width: 380px;
+    width: 100%;
+    box-shadow: 0 16px 40px rgba(129, 95, 215, 0.12);
+    border: 1.5px solid rgba(129, 95, 215, 0.15);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.offline-img-wrapper {
+    width: 100%;
+    max-width: 240px;
+    border-radius: 20px;
+    overflow: hidden;
+    margin-bottom: 16px;
+}
+
+.offline-img {
+    width: 100%;
+    height: auto;
+    display: block;
+    object-fit: cover;
+}
+
+.offline-card h3 {
+    margin: 8px 0 6px 0;
+    font-size: 21px;
+    font-weight: 800;
+    color: #1E1B4B;
+}
+
+.offline-card p {
+    font-size: 14px;
+    color: #64748B;
+    line-height: 1.5;
+    margin: 0 0 20px 0;
+    font-weight: 500;
+}
+
+/* Yellow Action Retry Button */
+.btn-retry-yellow {
+    width: 100%;
+    height: 52px;
+    border: none;
+    border-radius: 16px;
+    background: linear-gradient(180deg, #FCB041 0%, #E0921E 100%);
+    box-shadow: inset 0px 3px 3px rgba(255, 240, 200, 0.4), 0 6px 16px rgba(224, 146, 30, 0.3);
+    color: #1E1B4B;
+    font-weight: 800;
+    font-size: 15.5px;
+    cursor: pointer;
+    transition: transform 0.15s ease;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    font-family: inherit;
+}
+
+.btn-retry-yellow:active {
+    transform: scale(0.96);
+}
