@@ -4,6 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
+    <!-- Instant URL Sanitizer (Strips /index.html and ensures clean root URL for sharing and PWA install) -->
+    <script>
+        if (window.location.pathname.endsWith('index.html')) {
+            window.history.replaceState(null, '', window.location.origin + '/');
+        }
+    </script>
+
     <!-- Preconnect to Firebase CDNs for instant loading -->
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://seenmybus-default-rtdb.asia-southeast1.firebasedatabase.app" crossorigin>
@@ -17,11 +24,11 @@
     <meta name="author" content="Saif Rahman">
     <link rel="canonical" href="https://seenmybus.netlify.app/">
 
-    <!-- Open Graph / Social Sharing Preview (WhatsApp, Telegram, LinkedIn, FB) -->
+    <!-- Open Graph / Social Sharing Preview -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://seenmybus.netlify.app/">
     <meta property="og:site_name" content="SeenMyBus">
-    <meta property="og:title" content="SeenMyBus | Campus Bus Tracker">
+    <meta property="og:title" content="Home | SeenMyBus">
     <meta property="og:description" content="Find real-time crowdsourced bus parking locations and departures for Arka Jain University.">
     <meta property="og:image" content="https://seenmybus.netlify.app/og-image.png">
     <meta property="og:image:secure_url" content="https://seenmybus.netlify.app/og-image.png">
@@ -32,7 +39,7 @@
     <!-- Twitter Card Preview -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:url" content="https://seenmybus.netlify.app/">
-    <meta name="twitter:title" content="SeenMyBus | Campus Bus Tracker">
+    <meta name="twitter:title" content="Home | SeenMyBus">
     <meta name="twitter:description" content="Find real-time crowdsourced bus parking locations and departures for Arka Jain University.">
     <meta name="twitter:image" content="https://seenmybus.netlify.app/og-image.png">
 
@@ -43,7 +50,7 @@
     <link rel="apple-touch-icon" sizes="180x180" href="./icon-192.png">
     <link rel="shortcut icon" href="./app-icon.png">
 
-    <!-- Complete WebApplication Schema -->
+    <!-- Structured JSON-LD Data -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -75,8 +82,8 @@
     </script>
 
     <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="./main.css?v=8">
-    <link rel="stylesheet" href="./map.css?v=8">
+    <link rel="stylesheet" href="./main.css">
+    <link rel="stylesheet" href="./map.css">
     
     <!-- Web App Manifest -->
     <link rel="manifest" href="./manifest.json">
@@ -86,12 +93,32 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="SeenMyBus">
+    <meta name="apple-mobile-web-app-title" content="Home">
 
     <!-- Google Search Console -->
     <meta name="google-site-verification" content="1E9pcrRaa67f2e-8eZLGB1VFMCg4gQawP83NZ8mvaAM" />
 </head>
 <body>
+    <!-- Industrial Offline Sentinel Modal -->
+    <div id="offline-screen" class="offline-overlay" aria-hidden="true">
+        <div class="offline-card">
+            <div class="offline-icon-wrap">
+                <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="#815FD7" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                    <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path>
+                    <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path>
+                    <path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path>
+                    <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path>
+                    <path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path>
+                    <line x1="12" y1="20" x2="12.01" y2="20"></line>
+                </svg>
+            </div>
+            <h3 class="offline-title">No Internet Connection</h3>
+            <p class="offline-desc">You are currently offline. SeenMyBus requires an active connection to display live bus positions and spots.</p>
+            <button id="btn-retry-network" class="btn-primary offline-retry-btn">Try Again</button>
+        </div>
+    </div>
+
     <div id="splash-screen">
         <img src="./logo.svg" alt="SeenMyBus Logo" class="splash-logo">
     </div>
@@ -121,7 +148,7 @@
 
         <main id="map-container"></main>
 
-        <!-- Real-Time Bus Validation Floating Card -->
+        <!-- Real-Time Bus Validation Floating Card (Consensus System) -->
         <div id="bus-validation-bubble" class="validation-bubble hidden">
           <!-- Collapsed State: Expand Icon -->
           <button id="val-fab" class="val-fab" aria-label="Verify Bus">
@@ -306,7 +333,9 @@
             </div>
         </div>
     </div>
-    <script type="module" src="./app.js?v=8"></script>
+
+    <!-- Application Controller Logic -->
+    <script type="module" src="./app.js"></script>
 
     <!-- Interactive Onboarding Overlay -->
     <div id="onboarding-overlay" class="hidden">

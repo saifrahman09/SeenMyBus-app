@@ -1,19 +1,23 @@
 {
   "name": "SeenMyBus",
-  "short_name": "SeenMyBus",
-  "description": "Real-time crowdsourced campus bus tracking map.",
-  "start_url": "./index.html",
-  "scope": "./",
+  "short_name": "Home",
+  "description": "Real-time crowdsourced bus tracking for Arka Jain University.",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "orientation": "portrait",
   "background_color": "#815FD7",
   "theme_color": "#815FD7",
   "icons": [
     {
+      "src": "./app-icon.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
       "src": "./icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any"
+      "purpose": "any maskable"
     },
     {
       "src": "./icon-512.png",

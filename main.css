@@ -427,3 +427,104 @@ body, html {
     color: #FCB041;
     background: rgba(252, 176, 65, 0.08);
 }
+
+/* --- Industrial Offline Sentinel Overlay --- */
+.offline-overlay {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100dvh;
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 999999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    box-sizing: border-box;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.offline-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.offline-card {
+    background: #ffffff;
+    padding: 32px 24px;
+    border-radius: 28px;
+    text-align: center;
+    max-width: 340px;
+    width: 100%;
+    box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.2);
+    transform: translateY(12px) scale(0.97);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.offline-overlay.active .offline-card {
+    transform: translateY(0) scale(1);
+}
+
+.offline-icon-wrap {
+    width: 76px;
+    height: 76px;
+    background: #f5f2fc;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 18px auto;
+}
+
+.offline-title {
+    font-size: 19px;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0 0 8px 0;
+}
+
+.offline-desc {
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: #64748b;
+    margin: 0 0 24px 0;
+}
+
+.offline-retry-btn {
+    width: 100%;
+    height: 46px;
+    border-radius: 14px;
+    font-size: 14.5px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+/* --- Mobile Viewport Enforcements --- */
+html, body {
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+}
+
+#app-container {
+    height: 100dvh !important;
+    position: relative;
+    overflow: hidden;
+}
+
+#fixed-footer, 
+#selection-footer {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    z-index: 1000 !important;
+    padding-bottom: max(16px, env(safe-area-inset-bottom, 16px)) !important;
+    box-sizing: border-box !important;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.96) 28%, #ffffff 100%);
+}
