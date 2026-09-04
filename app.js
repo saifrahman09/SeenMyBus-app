@@ -3,6 +3,20 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/fireba
 import { getDatabase, ref, onValue, set, update, get, goOnline } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-database.js";
 import * as Config from "./config.js";
 
+// =============================================================================
+// 1. CAMPUS SHIFT PURGE TIMINGS (EASY CONFIGURATION)
+// =============================================================================
+// Enter university campus departure shift cutoffs in "HH:MM" 24-hour format.
+// Modify, add, or delete shift departure cutoffs here:
+export const CAMPUS_SHIFT_TIMINGS = [
+    "13:15", // Shift 1 Cutoff: 1:15 PM (Morning shift departures)
+    "16:15", // Shift 2 Cutoff: 4:15 PM (Afternoon regular departures)
+    "19:00"  // Shift 3 Cutoff: 7:00 PM (Evening / Special shift departures)
+];
+
+// Maximum allowable data lifespan (in minutes) if no shift cutoffs occurred
+export const MAX_PARKING_STALE_MINUTES = 90;
+
 // --- FIREBASE CONFIGURATION ---
 const firebaseConfig = {
     apiKey: "AIzaSyCXejNb5wgmZ6KJ3Q4r4BhBqw9KPn7iX5I",
@@ -34,7 +48,6 @@ let busLocationTracker = {};
 let routeLocationTracker = {};
 let currentSearchQuery = ''; 
 
-// Selection State Trackers
 let selectedRouteKey = null;
 let topRouteKey = null;
 let listOrderKeys = [];
@@ -42,10 +55,9 @@ let lastActiveDataSignature = null;
 let lastUnassignedDataSignature = null;
 let mapViewportInitialized = false;
 
-// Ghost Click Protector
 window.ignoreMapTap = false; 
 
-// --- 1. Background Service Worker Registration & Instant Auto-Update ---
+// --- Service Worker Registration & Instant Auto-Update ---
 if ('serviceWorker' in navigator) {
     let refreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -69,7 +81,6 @@ if ('serviceWorker' in navigator) {
     }).catch(err => console.warn("SW Registration:", err));
 }
 
-// --- 2. Admin Visibility Check ---
 function checkAdminVisibility() {
     const adminLink = document.getElementById('admin-portal-link');
     const adminTopBtn = document.getElementById('admin-top-btn');
@@ -83,7 +94,6 @@ function checkAdminVisibility() {
 }
 checkAdminVisibility();
 
-// --- 3. Triple-Tap Sidebar Logo Gesture ---
 function initSidebarLogoTap() {
     const brandLogo = document.querySelector('.brand-logo');
     if (!brandLogo) return;
@@ -104,7 +114,6 @@ function initSidebarLogoTap() {
 }
 initSidebarLogoTap();
 
-// --- 3B. PWA Install Prompt Engine ---
 let deferredInstallPrompt = null;
 const installAppBtn = document.getElementById('btn-install-app') || document.getElementById('pwa-install-btn');
 
@@ -119,9 +128,7 @@ if (installAppBtn) {
         if (!deferredInstallPrompt) return;
         deferredInstallPrompt.prompt();
         const { outcome } = await deferredInstallPrompt.userChoice;
-        if (outcome === 'accepted') {
-            installAppBtn.classList.add('hidden');
-        }
+        if (outcome === 'accepted') installAppBtn.classList.add('hidden');
         deferredInstallPrompt = null;
     });
 }
@@ -131,7 +138,6 @@ window.addEventListener('appinstalled', () => {
     deferredInstallPrompt = null;
 });
 
-// --- 4. Simplified Device Identity ---
 function getDeviceToken() {
     let token = localStorage.getItem('smb_device_token');
     if (!token) {
@@ -142,7 +148,6 @@ function getDeviceToken() {
 }
 const currentDeviceToken = getDeviceToken();
 
-// --- 5. Real-Time Keepalive & Reconnect ---
 const connectedRef = ref(db, ".info/connected");
 onValue(connectedRef, (snap) => {
     if (snap.val() === true) console.log("SeenMyBus Realtime Connected");
@@ -151,7 +156,6 @@ document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') goOnline(db);
 });
 
-// --- 6. Splash Screen Dismissal ---
 function hideSplashScreen() {
     const splash = document.getElementById('splash-screen');
     if (splash && !splash.classList.contains('fade-out')) {
@@ -161,7 +165,6 @@ function hideSplashScreen() {
 }
 setTimeout(hideSplashScreen, 1500);
 
-// --- 7. Guide, Points & Ranks ---
 function getCurrentCycleKey() {
     const now = new Date();
     let year = now.getFullYear();
@@ -187,9 +190,7 @@ async function addContributionPoints(points = 10) {
             lastActive: Date.now()
         });
         updateRankDisplay(newScore);
-    } catch (e) {
-        console.error("Contributor sync error:", e);
-    }
+    } catch (e) {}
 }
 
 function updateRankDisplay(score) {
@@ -208,12 +209,9 @@ async function loadUserRank() {
         const snap = await get(ref(db, `userProfiles/${currentDeviceToken}/${getCurrentCycleKey()}`));
         const data = snap.val() || { score: 0 };
         updateRankDisplay(data.score || 0);
-    } catch (e) {
-        console.warn("User rank load error:", e);
-    }
+    } catch (e) {}
 }
 
-// --- 8. Notification System & FCM Registration ---
 async function registerFCMToken() {
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     try {
@@ -222,13 +220,8 @@ async function registerFCMToken() {
             vapidKey: 'BPgf5onxNHlQiYFzQ3Q03IHvYKe22Yuu1JahIj9MQkvl5XwadaViZOAAVXCV_tmqhwWlq2vfZe1T0ybd9PGhLsI',
             serviceWorkerRegistration: registration
         });
-        
-        if (fcmToken) {
-            await set(ref(db, `fcmTokens/${currentDeviceToken}`), fcmToken);
-        }
-    } catch (err) {
-        console.error("FCM Token Registration Error:", err);
-    }
+        if (fcmToken) await set(ref(db, `fcmTokens/${currentDeviceToken}`), fcmToken);
+    } catch (err) {}
 }
 
 function initNotificationSystem() {
@@ -237,7 +230,6 @@ function initNotificationSystem() {
         registerFCMToken();
         return;
     }
-    
     const isAsked = localStorage.getItem('smb_notif_asked');
     if (!isAsked && "Notification" in window && Notification.permission === 'default') {
         setTimeout(() => { 
@@ -246,7 +238,6 @@ function initNotificationSystem() {
             }
         }, 8000);
     }
-    
     const allowBtn = document.getElementById('btn-allow-notif');
     if (allowBtn) {
         allowBtn.onclick = async () => {
@@ -257,12 +248,9 @@ function initNotificationSystem() {
                     if (notifBanner) notifBanner.classList.add('hidden');
                     await registerFCMToken();
                 }
-            } catch (err) {
-                console.error("Permission error:", err);
-            }
+            } catch (err) {}
         };
     }
-    
     const dismissBtn = document.getElementById('btn-dismiss-notif');
     if (dismissBtn) {
         dismissBtn.onclick = () => {
@@ -272,7 +260,6 @@ function initNotificationSystem() {
     }
 }
 
-// --- 9. Real-Time Dynamic Configuration Listener ---
 function updateRouteSelectDropdown() {
     const rSelect = document.getElementById('route-select');
     if (!rSelect) return;
@@ -286,25 +273,21 @@ function updateRouteSelectDropdown() {
     });
     if (currentVal) rSelect.value = currentVal;
 }
-
 updateRouteSelectDropdown();
 
 onValue(ref(db, 'appConfig'), (snapshot) => {
     const configData = snapshot.val();
     if (!configData) return;
-
     if (Array.isArray(configData.routes) && configData.routes.length > 0) {
         ALL_ROUTES = configData.routes;
         updateRouteSelectDropdown();
     }
-
     if (configData.totalBuses) {
         const busCount = parseInt(configData.totalBuses, 10);
         if (!isNaN(busCount) && busCount > 0) {
             ALL_BUSES = Array.from({ length: busCount }, (_, i) => String(i + 1).padStart(2, '0'));
         }
     }
-
     if (configData.totalSpots) {
         const spotCount = parseInt(configData.totalSpots, 10);
         if (!isNaN(spotCount) && spotCount > 0) {
@@ -314,7 +297,6 @@ onValue(ref(db, 'appConfig'), (snapshot) => {
     }
 });
 
-// --- 10. Smooth SVG Relocation Transit Animation ---
 function getSpotCoordinates(spotId) {
     const g = document.getElementById(spotId);
     if (!g) return null;
@@ -375,13 +357,19 @@ function animateBusTransition(busNo, fromSpotId, toSpotId) {
     }, 1300);
 }
 
-// --- 11. Automated Purge Engine ---
-function isDataStale(updatedAt) { return (Date.now() - updatedAt) > (90 * 60 * 1000); }
+function isDataStale(updatedAt) { 
+    return (Date.now() - updatedAt) > (MAX_PARKING_STALE_MINUTES * 60 * 1000); 
+}
+
 async function checkShiftPurge(data) {
     if (!data) return;
     const now = new Date();
     const currentMins = now.getHours() * 60 + now.getMinutes();
-    const cutoffs = [795, 975, 1140];
+    
+    const cutoffs = CAMPUS_SHIFT_TIMINGS.map(timeStr => {
+        const [h, m] = timeStr.split(':').map(Number);
+        return (h * 60) + m;
+    });
     
     let activeBusesUpdates = {};
     let needsPurge = false;
@@ -394,6 +382,7 @@ async function checkShiftPurge(data) {
             const itemMins = itemDate.getHours() * 60 + itemDate.getMinutes();
             const isSameDay = now.toDateString() === itemDate.toDateString();
             const crossedCutoff = isSameDay && cutoffs.some(c => itemMins < c && currentMins >= c);
+            
             if (crossedCutoff || isDataStale(item.updatedAt) || !isSameDay) {
                 activeBusesUpdates[spotId] = null;
                 needsPurge = true;
@@ -403,16 +392,22 @@ async function checkShiftPurge(data) {
 
     if (needsPurge) {
         try { await update(ref(db, 'activeBuses'), activeBusesUpdates); }
-        catch (e) { console.error("Purge Error:", e); }
+        catch (e) {}
     }
 }
 
-// --- 12. Consent & Deferred Tour Setup ---
+setInterval(async () => {
+    if (appState === 'VIEW' && !window.isTourActive) {
+        try {
+            const snap = await get(ref(db, 'activeBuses'));
+            if (snap.exists()) checkShiftPurge(snap.val());
+        } catch (e) {}
+    }
+}, 60000);
+
 window.triggerPostTourConsents = function() {
     const consentBanner = document.getElementById('consent-banner');
-    if (consentBanner && !localStorage.getItem('aju_consent')) {
-        consentBanner.classList.remove('hidden');
-    }
+    if (consentBanner && !localStorage.getItem('aju_consent')) consentBanner.classList.remove('hidden');
     initNotificationSystem();
 };
 
@@ -426,11 +421,7 @@ if (acceptBtn) {
         loadUserRank();
     };
 }
-
-if (localStorage.getItem('smb_tour_completed')) {
-    window.triggerPostTourConsents();
-}
-
+if (localStorage.getItem('smb_tour_completed')) window.triggerPostTourConsents();
 loadUserRank();
 
 const btnHam = document.getElementById('btn-hamburger');
@@ -438,7 +429,10 @@ const sidePanel = document.getElementById('side-panel');
 const sideOverlay = document.getElementById('side-panel-overlay');
 const closePanel = document.getElementById('btn-close-panel');
 const togglePanel = () => {
-    if (sidePanel) sidePanel.classList.toggle('open');
+    if (sidePanel) {
+        sidePanel.classList.toggle('open');
+        sidePanel.scrollTop = 0;
+    }
     if (sideOverlay) sideOverlay.classList.toggle('hidden');
     if (sidePanel && sidePanel.classList.contains('open')) loadUserRank();
 };
@@ -446,7 +440,6 @@ if (btnHam) btnHam.onclick = togglePanel;
 if (closePanel) closePanel.onclick = togglePanel;
 if (sideOverlay) sideOverlay.onclick = togglePanel;
 
-// --- 13. Load Campus Map ---
 fetch('./ArkaJainUniversityBusMap.xml')
     .then(res => { if (!res.ok) throw new Error("Map load failure"); return res.text(); })
     .then(svgText => {
@@ -471,22 +464,25 @@ fetch('./ArkaJainUniversityBusMap.xml')
                 hideSplashScreen();
             });
         }
-    })
-    .catch(err => { 
-        console.error("Map fetch error:", err);
-        hideSplashScreen(); 
-    });
+    }).catch(err => { hideSplashScreen(); });
 
 function getFilteredBuses() {
     if (!currentSearchQuery) return activeBuses;
-    return activeBuses.filter(bus => 
-        bus.busNos.some(b => b.toLowerCase().includes(currentSearchQuery)) || 
-        bus.name.toLowerCase().includes(currentSearchQuery) || 
-        bus.routeNum.toLowerCase().includes(currentSearchQuery)
-    );
+    return activeBuses.filter(bus => {
+        const matchesBusNo = bus.busNos.some(b => b.toLowerCase().includes(currentSearchQuery));
+        const matchesName = bus.name.toLowerCase().includes(currentSearchQuery);
+        const matchesRoute = bus.routeNum.toLowerCase().includes(currentSearchQuery);
+        let matchesIndividualRoute = false;
+        if (bus.routes && Array.isArray(bus.routes)) {
+            matchesIndividualRoute = bus.routes.some(r => 
+                r.num.toLowerCase().includes(currentSearchQuery) || 
+                r.name.toLowerCase().includes(currentSearchQuery)
+            );
+        }
+        return matchesBusNo || matchesName || matchesRoute || matchesIndividualRoute;
+    });
 }
 
-// --- 14. Realtime Syncing (Pure Push WebSocket) ---
 function createActiveDataSignature(data) {
     if (!data) return '';
     return Object.keys(data).filter(k => k.startsWith('spot-')).sort().map(spotId => {
@@ -558,21 +554,15 @@ function handleBusesData(data) {
             const routeCompositeKey = `${ab.routeNum}_${ab.name}`;
             let prevSpot = busLocationTracker[bNo];
 
-            if (
-                !prevSpot &&
-                routeLocationTracker[routeCompositeKey] &&
-                routeLocationTracker[routeCompositeKey] !== ab.spotId
-            ) {
+            if (!prevSpot && routeLocationTracker[routeCompositeKey] && routeLocationTracker[routeCompositeKey] !== ab.spotId) {
                 prevSpot = routeLocationTracker[routeCompositeKey];
             }
 
             if (!window.isTourActive && prevSpot && prevSpot !== ab.spotId) {
                 animateBusTransition(bNo, prevSpot, ab.spotId);
             }
-
             busLocationTracker[bNo] = ab.spotId;
         });
-
         newRouteLocationTracker[`${ab.routeNum}_${ab.name}`] = ab.spotId;
     });
 
@@ -587,24 +577,16 @@ function handleBusesData(data) {
 
 function handleUnassignedData(data) {
     if (window.isTourActive) data = null; 
-    
     const signature = createUnassignedDataSignature(data);
     if (signature === lastUnassignedDataSignature) return;
-
     lastUnassignedDataSignature = signature;
-
     const validSpots = data ? Object.keys(data).filter(k => k.startsWith('spot-')) : [];
     unassignedBuses = validSpots.map(spotId => ({ spotId, ...data[spotId] }));
-
     if (appState === 'VIEW' && mapElement) renderMapSpots();
 }
 
-onValue(ref(db, 'activeBuses'), (snapshot) => { 
-    try { handleBusesData(snapshot.val()); } catch (err) { console.error(err); } 
-});
-onValue(ref(db, 'unassignedBuses'), (snapshot) => { 
-    try { handleUnassignedData(snapshot.val()); } catch (e) { console.error(e); } 
-});
+onValue(ref(db, 'activeBuses'), (snapshot) => { try { handleBusesData(snapshot.val()); } catch (err) {} });
+onValue(ref(db, 'unassignedBuses'), (snapshot) => { try { handleUnassignedData(snapshot.val()); } catch (e) {} });
 
 function getUnassignedBusNumbers() {
     const assigned = new Set();
@@ -612,22 +594,13 @@ function getUnassignedBusNumbers() {
     return ALL_BUSES.filter(bNo => !assigned.has(bNo));
 }
 
-// --- 15. Map Render Logic ---
 function renderMapSpots() {
     ALL_SPOTS.forEach(spotId => {
         const g = document.getElementById(spotId);
         if (!g) return;
 
         g.querySelectorAll('text.spot-text').forEach(t => t.remove());
-
-        g.classList.remove(
-            'spot-grey',
-            'spot-green',
-            'spot-yellow',
-            'spot-deep-green',
-            'spot-unassigned'
-        );
-
+        g.classList.remove('spot-grey', 'spot-green', 'spot-yellow', 'spot-deep-green', 'spot-unassigned');
         g.onclick = null;
         g.style.opacity = '1';
         g.style.pointerEvents = 'all';
@@ -640,40 +613,17 @@ function renderMapSpots() {
             if (busInfo && busInfo.busNos.length > 0) {
                 g.classList.add('spot-yellow');
                 addTextToSpot(g, busInfo.busNos.join(','), 'text-black');
-                g.style.opacity = '1';
-                g.style.pointerEvents = 'all';
-
-                g.onclick = (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (window.ignoreMapTap) return;
-
-                    focusOnSpot(spotId);
-                    highlightInList(spotId, true);
-                };
+                g.onclick = (e) => { e.preventDefault(); e.stopPropagation(); if (window.ignoreMapTap) return; focusOnSpot(spotId); highlightInList(spotId, true); };
             } else if (unassignedInfo) {
                 g.classList.add('spot-unassigned');
                 addTextToSpot(g, unassignedInfo.busNo, 'text-black');
-                g.style.opacity = '1';
-                g.style.pointerEvents = 'all';
-
-                g.onclick = (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (window.ignoreMapTap) return;
-
-                    focusOnSpot(spotId);
-                };
+                g.onclick = (e) => { e.preventDefault(); e.stopPropagation(); if (window.ignoreMapTap) return; focusOnSpot(spotId); };
             } else {
                 g.classList.add('spot-grey');
                 g.style.opacity = '0';
                 g.style.pointerEvents = 'none';
-                g.onclick = null;
             }
         } else if (appState === 'SELECTION') {
-            g.style.opacity = '1';
-            g.style.pointerEvents = 'all';
-
             if (busInfo && busInfo.busNos.length > 0) {
                 g.classList.add('spot-green');
                 addTextToSpot(g, busInfo.busNos.join(','), 'text-green');
@@ -693,24 +643,12 @@ function renderMapSpots() {
                 if (window.ignoreMapTap) return;
                 
                 if (busInfo) {
-                    const isDifferentRoute = !pendingUpdate.route || 
-                        (busInfo.routeNum !== pendingUpdate.route.num || busInfo.name !== pendingUpdate.route.name);
+                    const existingBuses = busInfo.busNos || (busInfo.busNo ? [busInfo.busNo] : []);
+                    const isSameBus = existingBuses.includes(pendingUpdate.busNo);
 
-                    if (pendingUpdate.isReplacement) {
-                        if (isDifferentRoute) {
-                            alert(`Slot occupied by Route ${busInfo.routeNum} - ${busInfo.name}. Please mark it departed first.`);
-                            return;
-                        }
-                    } else {
-                        const existingBuses = busInfo.busNos || [];
-
-                        if (
-                            existingBuses.length > 0 &&
-                            !existingBuses.includes(pendingUpdate.busNo)
-                        ) {
-                            alert(`Slot is already occupied. A slot can only hold one bus at a time.`);
-                            return;
-                        }
+                    if (!isSameBus) {
+                        alert(`Slot is already occupied by Bus ${existingBuses.join(', ')}. A parking slot can only hold one bus at a time.`);
+                        return;
                     }
                 }
                 
@@ -749,7 +687,6 @@ function addTextToSpot(g, textContent, colorClass) {
     g.appendChild(text);
 }
 
-// --- 16. Sheet Drag & Pure Pan Engine ---
 const draggableSheet = document.getElementById('draggable-sheet');
 const dragHandle = document.getElementById('drag-handle-area');
 const contentWrapper = document.getElementById('sheet-content-wrapper');
@@ -777,58 +714,26 @@ if (dragHandle) {
     });
 }
 
-let scale = 1;
-let pointX = 0;
-let pointY = 0;
-let startX = 0;
-let startY = 0;
-let isPanning = false;
-let initialPinchDist = null;
-let initialScale = 1;
-let panPointerMoved = false;
-
-let transformFramePending = false;
-
-const DEFAULT_MAP_ZOOM = 1.95;
-const DEFAULT_MAP_CENTER_X = 735;
-const DEFAULT_MAP_CENTER_Y = 750;
+let scale = 1, pointX = 0, pointY = 0, startX = 0, startY = 0, isPanning = false, initialPinchDist = null, initialScale = 1, panPointerMoved = false, transformFramePending = false;
+const DEFAULT_MAP_ZOOM = 1.95, DEFAULT_MAP_CENTER_X = 735, DEFAULT_MAP_CENTER_Y = 750;
 
 function applyBoundaries() {
     if (!mapContainer) return;
-
-    const contW = mapContainer.clientWidth;
-    const contH = mapContainer.clientHeight;
-
-    const scaledW = contW * scale;
-    const scaledH = contH * scale;
-
-    if (scaledW <= contW) {
-        pointX = (contW - scaledW) / 2;
-    } else {
-        pointX = Math.min(0, Math.max(pointX, contW - scaledW));
-    }
-
-    if (scaledH <= contH) {
-        pointY = (contH - scaledH) / 2;
-    } else {
-        pointY = Math.min(0, Math.max(pointY, contH - scaledH));
-    }
+    const contW = mapContainer.clientWidth, contH = mapContainer.clientHeight, scaledW = contW * scale, scaledH = contH * scale;
+    if (scaledW <= contW) pointX = (contW - scaledW) / 2;
+    else pointX = Math.min(0, Math.max(pointX, contW - scaledW));
+    if (scaledH <= contH) pointY = (contH - scaledH) / 2;
+    else pointY = Math.min(0, Math.max(pointY, contH - scaledH));
 }
 
 function writeTransform() {
     transformFramePending = false;
     if (!mapElement) return;
-
     applyBoundaries();
-
     mapElement.style.transform = `translate(${pointX}px, ${pointY}px) scale(${scale})`;
-
     if (mapContainer) {
-        if (scale >= 1.6) {
-            mapContainer.classList.add('is-zoomed-in');
-        } else {
-            mapContainer.classList.remove('is-zoomed-in');
-        }
+        if (scale >= 1.6) mapContainer.classList.add('is-zoomed-in');
+        else mapContainer.classList.remove('is-zoomed-in');
     }
 }
 
@@ -840,239 +745,86 @@ function setTransform() {
 
 function setDefaultMapViewport() {
     if (!mapElement || !mapContainer) return;
-
-    const viewBox = mapElement.viewBox.baseVal;
-    const baseW = viewBox.width || 1265;
-    const baseH = viewBox.height || 1335;
-
-    const contW = mapContainer.clientWidth;
-    const contH = mapContainer.clientHeight;
-
+    const baseW = mapElement.viewBox.baseVal.width || 1265, baseH = mapElement.viewBox.baseVal.height || 1335;
+    const contW = mapContainer.clientWidth, contH = mapContainer.clientHeight;
     const fitScale = Math.max(contW / baseW, contH / baseH);
-    const renderedW = baseW * fitScale;
-    const renderedH = baseH * fitScale;
-
-    const offsetX = (renderedW - contW) / 2;
-    const offsetY = (renderedH - contH) / 2;
-
-    const targetPixelX = (DEFAULT_MAP_CENTER_X * fitScale) - offsetX;
-    const targetPixelY = (DEFAULT_MAP_CENTER_Y * fitScale) - offsetY;
-
+    const offsetX = ((baseW * fitScale) - contW) / 2, offsetY = ((baseH * fitScale) - contH) / 2;
     scale = DEFAULT_MAP_ZOOM;
-    pointX = (contW / 2) - (targetPixelX * scale);
-    pointY = (contH / 2) - (targetPixelY * scale);
-
+    pointX = (contW / 2) - (((DEFAULT_MAP_CENTER_X * fitScale) - offsetX) * scale);
+    pointY = (contH / 2) - (((DEFAULT_MAP_CENTER_Y * fitScale) - offsetY) * scale);
     mapElement.style.transition = 'none';
     setTransform();
 }
 
 function zoomMapAt(clientX, clientY, zoomFactor) {
     if (!mapContainer || !mapElement) return;
-
     const rect = mapContainer.getBoundingClientRect();
-    const localX = clientX - rect.left;
-    const localY = clientY - rect.top;
-
+    const localX = clientX - rect.left, localY = clientY - rect.top;
     const oldScale = scale;
     const newScale = Math.min(5, Math.max(1, oldScale * zoomFactor));
-
     if (newScale === oldScale) return;
-
-    const mapX = (localX - pointX) / oldScale;
-    const mapY = (localY - pointY) / oldScale;
-
+    const mapX = (localX - pointX) / oldScale, mapY = (localY - pointY) / oldScale;
     scale = newScale;
     pointX = localX - (mapX * scale);
     pointY = localY - (mapY * scale);
-
     setTransform();
 }
 
 function resetFocus() {
     if (!mapElement || !mapContainer) return;
-
     document.querySelectorAll('.active-target').forEach(el => el.classList.remove('active-target', 'pop-animate'));
     document.querySelectorAll('.active-list-item').forEach(el => el.classList.remove('active-list-item'));
     document.querySelectorAll('.flash-highlight').forEach(el => el.classList.remove('flash-highlight'));
-
-    scale = 1;
-    pointX = 0;
-    pointY = 0;
-
+    scale = 1; pointX = 0; pointY = 0;
     mapElement.style.transition = 'transform 0.35s ease';
     setTransform();
-
-    setTimeout(() => {
-        if (mapElement) mapElement.style.transition = 'none';
-    }, 350);
-
-    selectedRouteKey = null;
-    topRouteKey = null;
-
-    if (typeof hideValidationCard === 'function') {
-        hideValidationCard();
-    }
+    setTimeout(() => { if (mapElement) mapElement.style.transition = 'none'; }, 350);
+    selectedRouteKey = null; topRouteKey = null;
+    if (typeof hideValidationCard === 'function') hideValidationCard();
 }
 
 if (mapContainer) {
-    mapContainer.addEventListener('mousedown', e => {
-        if (e.button !== 0) return;
-        isPanning = true;
-        panPointerMoved = false;
-        startX = e.clientX - pointX;
-        startY = e.clientY - pointY;
-        mapContainer.style.cursor = 'grabbing';
-    });
-
-    window.addEventListener('mousemove', e => {
-        if (!isPanning) return;
-        const nextX = e.clientX - startX;
-        const nextY = e.clientY - startY;
-
-        if (Math.abs(nextX - pointX) > 2 || Math.abs(nextY - pointY) > 2) {
-            panPointerMoved = true;
-        }
-
-        pointX = nextX;
-        pointY = nextY;
-        setTransform();
-    });
-
-    window.addEventListener('mouseup', () => {
-        if (!isPanning) return;
-        isPanning = false;
-        if (mapContainer) mapContainer.style.cursor = 'grab';
-    });
-
-    window.addEventListener('mouseleave', () => {
-        isPanning = false;
-        if (mapContainer) mapContainer.style.cursor = 'grab';
-    });
-
-    mapContainer.addEventListener('wheel', e => {
-        e.preventDefault();
-        const factor = e.deltaY < 0 ? 1.12 : (1 / 1.12);
-        zoomMapAt(e.clientX, e.clientY, factor);
-    }, { passive: false });
-
-    mapContainer.addEventListener('touchstart', e => {
-        if (e.touches.length === 1) {
-            isPanning = true;
-            panPointerMoved = false;
-            startX = e.touches[0].clientX - pointX;
-            startY = e.touches[0].clientY - pointY;
-        } else if (e.touches.length === 2) {
-            isPanning = false;
-            initialPinchDist = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
-            );
-            initialScale = scale;
-        }
-    }, { passive: true });
-
-    mapContainer.addEventListener('touchmove', e => {
-        if (e.touches.length === 1 && isPanning) {
-            e.preventDefault();
-            pointX = e.touches[0].clientX - startX;
-            pointY = e.touches[0].clientY - startY;
-            panPointerMoved = true;
-            setTransform();
-        } else if (e.touches.length === 2 && initialPinchDist) {
-            e.preventDefault();
-            const currentDist = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
-            );
-            const nextScale = Math.min(5, Math.max(1, initialScale * (currentDist / initialPinchDist)));
-            const rect = mapContainer.getBoundingClientRect();
-            const centerX = ((e.touches[0].clientX + e.touches[1].clientX) / 2) - rect.left;
-            const centerY = ((e.touches[0].clientY + e.touches[1].clientY) / 2) - rect.top;
-
-            const mapX = (centerX - pointX) / scale;
-            const mapY = (centerY - pointY) / scale;
-
-            scale = nextScale;
-            pointX = centerX - (mapX * scale);
-            pointY = centerY - (mapY * scale);
-            setTransform();
-        }
-    }, { passive: false });
-
-    mapContainer.addEventListener('touchend', e => {
-        if (e.touches.length === 0) {
-            isPanning = false;
-            initialPinchDist = null;
-        }
-    }, { passive: true });
-
-    mapContainer.addEventListener('click', e => {
-        if (window.ignoreMapTap) return;
-        if (panPointerMoved) {
-            panPointerMoved = false;
-            return;
-        }
-        if (!e.target.closest('[id^="spot-"]')) {
-            resetFocus();
-        }
-    });
+    mapContainer.addEventListener('mousedown', e => { if (e.button !== 0) return; isPanning = true; panPointerMoved = false; startX = e.clientX - pointX; startY = e.clientY - pointY; mapContainer.style.cursor = 'grabbing'; });
+    window.addEventListener('mousemove', e => { if (!isPanning) return; const nextX = e.clientX - startX, nextY = e.clientY - startY; if (Math.abs(nextX - pointX) > 2 || Math.abs(nextY - pointY) > 2) panPointerMoved = true; pointX = nextX; pointY = nextY; setTransform(); });
+    window.addEventListener('mouseup', () => { isPanning = false; if (mapContainer) mapContainer.style.cursor = 'grab'; });
+    window.addEventListener('mouseleave', () => { isPanning = false; if (mapContainer) mapContainer.style.cursor = 'grab'; });
+    mapContainer.addEventListener('wheel', e => { e.preventDefault(); const factor = e.deltaY < 0 ? 1.12 : (1 / 1.12); zoomMapAt(e.clientX, e.clientY, factor); }, { passive: false });
+    mapContainer.addEventListener('touchstart', e => { if (e.touches.length === 1) { isPanning = true; panPointerMoved = false; startX = e.touches[0].clientX - pointX; startY = e.touches[0].clientY - pointY; } else if (e.touches.length === 2) { isPanning = false; initialPinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); initialScale = scale; } }, { passive: true });
+    mapContainer.addEventListener('touchmove', e => { if (e.touches.length === 1 && isPanning) { e.preventDefault(); pointX = e.touches[0].clientX - startX; pointY = e.touches[0].clientY - startY; panPointerMoved = true; setTransform(); } else if (e.touches.length === 2 && initialPinchDist) { e.preventDefault(); const currentDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY); const nextScale = Math.min(5, Math.max(1, initialScale * (currentDist / initialPinchDist))); const rect = mapContainer.getBoundingClientRect(), centerX = ((e.touches[0].clientX + e.touches[1].clientX) / 2) - rect.left, centerY = ((e.touches[0].clientY + e.touches[1].clientY) / 2) - rect.top; const mapX = (centerX - pointX) / scale, mapY = (centerY - pointY) / scale; scale = nextScale; pointX = centerX - (mapX * scale); pointY = centerY - (mapY * scale); setTransform(); } }, { passive: false });
+    mapContainer.addEventListener('touchend', e => { if (e.touches.length === 0) { isPanning = false; initialPinchDist = null; } }, { passive: true });
+    mapContainer.addEventListener('click', e => { if (window.ignoreMapTap || panPointerMoved) { panPointerMoved = false; return; } if (!e.target.closest('[id^="spot-"]')) resetFocus(); });
 }
 
-// --- 17. Optimized Bus List UI ---
 function getGroupedRoutes(buses) {
     const routeMap = {};
-
     buses.forEach(bus => {
-        const key = `route_${bus.routeNum}_${bus.name}`;
-        if (!routeMap[key]) {
-            routeMap[key] = {
-                key,
-                routeNum: bus.routeNum,
-                name: bus.name,
-                buses: [],
-                users: bus.users || 1
-            };
-        }
-
-        bus.busNos.forEach(bNo => {
-            if (!routeMap[key].buses.some(b => b.busNo === bNo)) {
-                routeMap[key].buses.push({
-                    busNo: bNo,
-                    spotId: bus.spotId
-                });
-            }
+        const routesList = (bus.routes && Array.isArray(bus.routes) && bus.routes.length > 0) ? bus.routes : [{ num: bus.routeNum, name: bus.name }];
+        routesList.forEach(r => {
+            if (!r || !r.num) return;
+            const key = `route_${r.num}_${r.name}`;
+            if (!routeMap[key]) { routeMap[key] = { key, routeNum: r.num, name: r.name, buses: [], users: bus.users || 1 }; }
+            bus.busNos.forEach(bNo => {
+                if (!routeMap[key].buses.some(b => b.busNo === bNo)) { routeMap[key].buses.push({ busNo: bNo, spotId: bus.spotId }); }
+            });
+            routeMap[key].users = Math.max(routeMap[key].users, bus.users || 1);
         });
-
-        routeMap[key].users = Math.max(routeMap[key].users, bus.users || 1);
     });
-
     return Object.values(routeMap).sort((a, b) => parseInt(a.routeNum) - parseInt(b.routeNum));
 }
 
 function buildStableListOrder(groupedRoutes) {
     const defaultKeys = groupedRoutes.map(item => item.key);
     const availableKeys = new Set(defaultKeys);
-
     listOrderKeys = listOrderKeys.filter(key => availableKeys.has(key));
-
     defaultKeys.forEach((key, defaultIndex) => {
         if (listOrderKeys.includes(key)) return;
         let insertAt = listOrderKeys.length;
-
         for (let i = 0; i < listOrderKeys.length; i++) {
-            const existingDefaultIndex = defaultKeys.indexOf(listOrderKeys[i]);
-            if (existingDefaultIndex > defaultIndex) {
-                insertAt = i;
-                break;
-            }
+            if (defaultKeys.indexOf(listOrderKeys[i]) > defaultIndex) { insertAt = i; break; }
         }
         listOrderKeys.splice(insertAt, 0, key);
     });
-
-    if (topRouteKey && availableKeys.has(topRouteKey)) {
-        listOrderKeys = [topRouteKey, ...listOrderKeys.filter(key => key !== topRouteKey)];
-    }
-
+    if (topRouteKey && availableKeys.has(topRouteKey)) listOrderKeys = [topRouteKey, ...listOrderKeys.filter(key => key !== topRouteKey)];
     const routeMap = new Map(groupedRoutes.map(item => [item.key, item]));
     return listOrderKeys.map(key => routeMap.get(key)).filter(Boolean);
 }
@@ -1081,7 +833,6 @@ function applyListSelection(container) {
     if (!container) return;
     const items = container.querySelectorAll('.bus-item');
     items.forEach(item => item.classList.remove('active-list-item', 'flash-highlight'));
-
     if (!selectedRouteKey) return;
     const selectedItem = Array.from(items).find(item => item.dataset.routeKey === selectedRouteKey);
     if (selectedItem) selectedItem.classList.add('active-list-item');
@@ -1090,38 +841,22 @@ function applyListSelection(container) {
 function selectListRoute(routeKey, spotId = null, fromMap = false) {
     const container = document.getElementById('bus-list');
     if (!container || !routeKey) return;
-
     if (window.isTourActive && currentTourStep === 8 && !fromMap) {
-        setTimeout(() => {
-            if (typeof hideValidationCard === 'function') hideValidationCard();
-            window.nextTourStep();
-        }, 400);
+        setTimeout(() => { if (typeof hideValidationCard === 'function') hideValidationCard(); window.nextTourStep(); }, 400);
     }
-
     selectedRouteKey = routeKey;
     if (fromMap) {
         topRouteKey = routeKey;
         const targetItem = Array.from(container.querySelectorAll('.bus-item')).find(item => item.dataset.routeKey === routeKey);
-
-        if (targetItem) {
-            container.prepend(targetItem);
-            listOrderKeys = [routeKey, ...listOrderKeys.filter(key => key !== routeKey)];
-            container.scrollTop = 0;
-        }
+        if (targetItem) { container.prepend(targetItem); listOrderKeys = [routeKey, ...listOrderKeys.filter(key => key !== routeKey)]; container.scrollTop = 0; }
     }
-
     applyListSelection(container);
-
     if (fromMap) {
         const targetItem = Array.from(container.querySelectorAll('.bus-item')).find(item => item.dataset.routeKey === routeKey);
         if (targetItem) {
             void targetItem.offsetWidth;
             targetItem.classList.add('flash-highlight');
-            setTimeout(() => {
-                if (selectedRouteKey !== routeKey) return;
-                targetItem.classList.remove('flash-highlight');
-                targetItem.classList.add('active-list-item');
-            }, 600);
+            setTimeout(() => { if (selectedRouteKey !== routeKey) return; targetItem.classList.remove('flash-highlight'); targetItem.classList.add('active-list-item'); }, 600);
         }
     }
 }
@@ -1129,33 +864,31 @@ function selectListRoute(routeKey, spotId = null, fromMap = false) {
 function renderList(buses) {
     const container = document.getElementById('bus-list');
     if (!container) return;
-
     const groupedRoutes = getGroupedRoutes(buses);
     const emptyState = document.getElementById('empty-state');
-
     if (groupedRoutes.length === 0) {
-        listOrderKeys = [];
-        container.innerHTML = '';
+        listOrderKeys = []; container.innerHTML = '';
         if (emptyState) emptyState.classList.remove('hidden');
         return;
     }
-
     if (emptyState) emptyState.classList.add('hidden');
-
     const orderedRoutes = buildStableListOrder(groupedRoutes);
     const fragment = document.createDocumentFragment();
-
     orderedRoutes.forEach(item => {
         const div = document.createElement('div');
         div.className = 'bus-item';
         div.dataset.routeKey = item.key;
+        if (item.buses.length > 0) div.dataset.spots = item.buses.map(b => b.spotId).join(',');
 
-        if (item.buses.length > 0) {
-            div.dataset.spots = item.buses.map(b => b.spotId).join(',');
-        }
-
+        let subtextHtml = '';
         const displayUsers = item.users >= 999 ? 1 : (item.users || 1);
-        const subtextHtml = `<span class="verified-text">Suggested by ${displayUsers} user${displayUsers !== 1 ? 's' : ''}</span>`;
+        if (item.users >= 999) {
+            subtextHtml = `<span class="verified-text verified-official">Official Campus Schedule</span>`;
+        } else if (item.users >= 3) {
+            subtextHtml = `<span class="verified-text verified-consensus">✓ Community Confirmed</span>`;
+        } else {
+            subtextHtml = `<span class="verified-text">Reported by ${displayUsers} student${displayUsers !== 1 ? 's' : ''}</span>`;
+        }
 
         div.innerHTML = `
             <div class="bus-info-left">
@@ -1165,41 +898,23 @@ function renderList(buses) {
             </div>
             <div class="bus-badge-group"></div>
         `;
-
         const badgeGroup = div.querySelector('.bus-badge-group');
         item.buses.forEach(bObj => {
             const badge = document.createElement('div');
             badge.className = 'bus-circle-badge';
             badge.textContent = bObj.busNo;
-
             badge.addEventListener('click', (e) => { 
-                e.preventDefault();
-                e.stopPropagation();
-                window.ignoreMapTap = true;
-                setTimeout(() => window.ignoreMapTap = false, 400);
-
-                focusOnSpot(bObj.spotId);
-                selectListRoute(item.key, bObj.spotId, false);
+                e.preventDefault(); e.stopPropagation(); window.ignoreMapTap = true; setTimeout(() => window.ignoreMapTap = false, 400);
+                focusOnSpot(bObj.spotId); selectListRoute(item.key, bObj.spotId, false);
             });
-
             badgeGroup.appendChild(badge);
         });
-
         div.addEventListener('click', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            window.ignoreMapTap = true;
-            setTimeout(() => window.ignoreMapTap = false, 400);
-
-            if (item.buses.length > 0) { 
-                focusOnSpot(item.buses[0].spotId);
-                selectListRoute(item.key, item.buses[0].spotId, false);
-            }
+            e.preventDefault(); e.stopPropagation(); window.ignoreMapTap = true; setTimeout(() => window.ignoreMapTap = false, 400);
+            if (item.buses.length > 0) { focusOnSpot(item.buses[0].spotId); selectListRoute(item.key, item.buses[0].spotId, false); }
         });
-
         fragment.appendChild(div);
     });
-
     container.innerHTML = '';
     container.appendChild(fragment);
     applyListSelection(container);
@@ -1208,12 +923,10 @@ function renderList(buses) {
 function highlightInList(spotId, fromMap = false) {
     const container = document.getElementById('bus-list');
     if (!container) return;
-
     const targetItem = Array.from(container.querySelectorAll('.bus-item')).find(item => {
         const spots = (item.dataset.spots || '').split(',').filter(Boolean);
         return spots.includes(spotId);
     });
-
     if (!targetItem) return;
     selectListRoute(targetItem.dataset.routeKey, spotId, fromMap);
 }
@@ -1239,42 +952,23 @@ function focusOnSpot(spotId) {
         draggableSheet.style.transform = `translateY(${halfHeight}px)`;
     }
 
-    const cx = parseFloat(circle.getAttribute('cx'));
-    const cy = parseFloat(circle.getAttribute('cy'));
-    const contW = mapContainer.clientWidth;
-    const contH = mapContainer.clientHeight;
-    
-    const viewBox = mapElement.viewBox.baseVal;
-    const baseW = viewBox.width;
-    const baseH = viewBox.height;
-
+    const cx = parseFloat(circle.getAttribute('cx')), cy = parseFloat(circle.getAttribute('cy'));
+    const contW = mapContainer.clientWidth, contH = mapContainer.clientHeight;
+    const baseW = mapElement.viewBox.baseVal.width, baseH = mapElement.viewBox.baseVal.height;
     const scaleRatio = Math.max(contW / baseW, contH / baseH);
-    const svgActualW = baseW * scaleRatio;
-    const svgActualH = baseH * scaleRatio;
+    const offsetX = ((baseW * scaleRatio) - contW) / 2, offsetY = ((baseH * scaleRatio) - contH) / 2;
 
-    const offsetX = (svgActualW - contW) / 2;
-    const offsetY = (svgActualH - contH) / 2;
-
-    const busPixelX = (cx * scaleRatio) - offsetX;
-    const busPixelY = (cy * scaleRatio) - offsetY;
-    
     scale = 3.5;
-    pointX = (contW / 2) - (busPixelX * scale);
-    pointY = (contH * 0.45) - (busPixelY * scale); 
+    pointX = (contW / 2) - (((cx * scaleRatio) - offsetX) * scale);
+    pointY = (contH * 0.45) - (((cy * scaleRatio) - offsetY) * scale); 
     
     mapElement.style.transition = 'transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1)';
     setTransform();
-
-    setTimeout(() => {
-        if (mapElement) mapElement.style.transition = 'none';
-    }, 600);
+    setTimeout(() => { if (mapElement) mapElement.style.transition = 'none'; }, 600);
 
     document.querySelectorAll('.active-target').forEach(el => el.classList.remove('active-target', 'pop-animate'));
     spotGroup.classList.add('active-target', 'pop-animate');
-
-    setTimeout(() => {
-        if (spotGroup) spotGroup.classList.remove('pop-animate');
-    }, 500);
+    setTimeout(() => { if (spotGroup) spotGroup.classList.remove('pop-animate'); }, 500);
 
     if (typeof showValidationCard === 'function') {
         const activeBusInfo = activeBuses.find(b => b.spotId === spotId);
@@ -1284,88 +978,59 @@ function focusOnSpot(spotId) {
             const voters = activeBusInfo.votersLedger || {};
             const isAuthor = activeBusInfo.updatedBy === currentDeviceToken || activeBusInfo.updatedBy === ('ADMIN_' + currentDeviceToken);
             const hasVoted = voters[currentDeviceToken] === true;
-
-            if (isAuthor || hasVoted) {
-                hideValidationCard();
-            } else {
-                showValidationCard(activeBusInfo);
-            }
-        } else {
-            hideValidationCard();
-        }
+            if (isAuthor || hasVoted) hideValidationCard();
+            else showValidationCard(activeBusInfo);
+        } else hideValidationCard();
     }
 }
 
-// --- 18. Modal UI & Multi-Step Logic ---
 const modal = document.getElementById('modal-overlay');
-const tabPark = document.getElementById('tab-park');
-const tabDepart = document.getElementById('tab-depart');
-const flowPark = document.getElementById('flow-park');
-const flowDepart = document.getElementById('flow-depart');
-const s1 = document.getElementById('step-1');
-const s2 = document.getElementById('step-2');
-const s3Confirm = document.getElementById('step-3-confirm');
-const grid = document.getElementById('bus-grid');
-const departList = document.getElementById('depart-bus-list');
-const fixedFooter = document.getElementById('fixed-footer');
-const selFooter = document.getElementById('selection-footer');
-const topBar = document.querySelector('.top-bar');
-const rSelect = document.getElementById('route-select');
+const tabPark = document.getElementById('tab-park'), tabDepart = document.getElementById('tab-depart');
+const flowPark = document.getElementById('flow-park'), flowDepart = document.getElementById('flow-depart');
+const s1 = document.getElementById('step-1'), s2 = document.getElementById('step-2'), s3Confirm = document.getElementById('step-3-confirm');
+const grid = document.getElementById('bus-grid'), departList = document.getElementById('depart-bus-list');
+const fixedFooter = document.getElementById('fixed-footer'), selFooter = document.getElementById('selection-footer');
+const topBar = document.querySelector('.top-bar'), rSelect = document.getElementById('route-select');
 
 if (document.getElementById('btn-update-bus')) {
     document.getElementById('btn-update-bus').onclick = () => {
         if (modal) modal.classList.remove('hidden');
         switchTab('PARK');
-
         if (s1) s1.classList.remove('hidden'); 
         if (s2) s2.classList.add('hidden');
         if (s3Confirm) s3Confirm.classList.add('hidden');
-
         pendingUpdate = { route: null, busNo: null, spotId: null, isReplacement: false };
     };
 }
-
-if (document.getElementById('btn-close-modal')) {
-    document.getElementById('btn-close-modal').onclick = () => {
-        if (modal) modal.classList.add('hidden');
-    };
-}
+if (document.getElementById('btn-close-modal')) document.getElementById('btn-close-modal').onclick = () => { if (modal) modal.classList.add('hidden'); };
 
 function switchTab(mode) {
     if (mode === 'PARK') {
-        if (tabPark) tabPark.classList.add('active');
-        if (tabDepart) tabDepart.classList.remove('active');
-        if (flowPark) flowPark.classList.remove('hidden');
-        if (flowDepart) flowDepart.classList.add('hidden');
+        if (tabPark) tabPark.classList.add('active'); if (tabDepart) tabDepart.classList.remove('active');
+        if (flowPark) flowPark.classList.remove('hidden'); if (flowDepart) flowDepart.classList.add('hidden');
     } else {
-        if (tabDepart) tabDepart.classList.add('active');
-        if (tabPark) tabPark.classList.remove('active');
-        if (flowDepart) flowDepart.classList.remove('hidden');
-        if (flowPark) flowPark.classList.add('hidden');
+        if (tabDepart) tabDepart.classList.add('active'); if (tabPark) tabPark.classList.remove('active');
+        if (flowDepart) flowDepart.classList.remove('hidden'); if (flowPark) flowPark.classList.add('hidden');
         renderSimpleDepartList();
     }
 }
-
 if (tabPark) tabPark.onclick = () => switchTab('PARK');
 if (tabDepart) tabDepart.onclick = () => switchTab('DEPART');
 
-// --- 19. Departure Flow ---
 function renderSimpleDepartList() {
     if (!departList) return;
     departList.innerHTML = '';
-
     const activeList = [];
-    activeBuses.forEach(ab =>
-        ab.busNos.forEach(b => activeList.push({ busNo: b, label: `Route ${ab.routeNum} - ${ab.name}` }))
-    );
-
+    activeBuses.forEach(ab => {
+        const routeLabel = ab.routes && ab.routes.length > 0 ? ab.routes.map(r => `Route ${r.num} (${r.name})`).join(' + ') : `Route ${ab.routeNum} - ${ab.name}`;
+        ab.busNos.forEach(b => activeList.push({ busNo: b, label: routeLabel }));
+    });
     unassignedBuses.forEach(ub => activeList.push({ busNo: ub.busNo, label: "Unassigned Spot" }));
 
     if (activeList.length === 0) {
         departList.innerHTML = `<p style="text-align:center;color:#727272;font-size:13px;padding:20px 0;">No active buses parked.</p>`;
         return;
     }
-
     activeList.forEach(item => {
         const card = document.createElement('div');
         card.className = 'depart-card';
@@ -1379,11 +1044,7 @@ function renderSimpleDepartList() {
                 <span>Remove from Map</span>
             </div>
         `;
-        card.onclick = () => {
-            const targetBus = item.busNo;
-            if (modal) modal.classList.add('hidden');
-            executeFastUnassign(targetBus);
-        };
+        card.onclick = () => { const targetBus = item.busNo; if (modal) modal.classList.add('hidden'); executeFastUnassign(targetBus); };
         departList.appendChild(card);
     });
 }
@@ -1391,17 +1052,11 @@ function renderSimpleDepartList() {
 async function executeFastUnassign(busNumber) {
     if (window.isTourActive) return;
     try {
-        const [snapActive, snapUn] = await Promise.all([
-            get(ref(db, 'activeBuses')),
-            get(ref(db, 'unassignedBuses'))
-        ]);
-        const valActive = snapActive.val() || {};
-        const valUn = snapUn.val() || {};
-        let activeUpdates = {};
-        let unassignedUpdates = {};
+        const [snapActive, snapUn] = await Promise.all([get(ref(db, 'activeBuses')), get(ref(db, 'unassignedBuses'))]);
+        const valActive = snapActive.val() || {}, valUn = snapUn.val() || {};
+        let activeUpdates = {}, unassignedUpdates = {};
 
-        Object.keys(valActive).forEach(sId => {
-            if (!sId.startsWith('spot-')) return;
+        Object.keys(valActive).filter(k => k.startsWith('spot-')).forEach(sId => {
             let bList = valActive[sId].busNos || (valActive[sId].busNo ? [valActive[sId].busNo] : []);
             if (bList.includes(busNumber)) {
                 bList = bList.filter(b => b !== busNumber);
@@ -1410,18 +1065,14 @@ async function executeFastUnassign(busNumber) {
             }
         });
 
-        Object.keys(valUn).forEach(sId => {
-            if (!sId.startsWith('spot-')) return;
+        Object.keys(valUn).filter(k => k.startsWith('spot-')).forEach(sId => {
             if (valUn[sId].busNo === busNumber) unassignedUpdates[sId] = null;
         });
 
         if (Object.keys(activeUpdates).length > 0) await update(ref(db, 'activeBuses'), activeUpdates);
         if (Object.keys(unassignedUpdates).length > 0) await update(ref(db, 'unassignedBuses'), unassignedUpdates);
-
         addContributionPoints(5);
-    } catch (e) {
-        console.error("Fast depart error:", e);
-    }
+    } catch (e) {}
 }
 
 if (document.getElementById('btn-next-1')) {
@@ -1433,9 +1084,7 @@ if (document.getElementById('btn-next-1')) {
             pendingUpdate.route = null;
             if (s1) s1.classList.add('hidden');
             if (s2) s2.classList.remove('hidden');
-            if (document.getElementById('step-2-summary')) {
-                document.getElementById('step-2-summary').textContent = `Parked on Campus (Route Unknown)`;
-            }
+            if (document.getElementById('step-2-summary')) document.getElementById('step-2-summary').textContent = `Parked on Campus (Route Unknown)`;
             populateBusGrid(true);
         } else {
             const [selNum, ...nameParts] = selectedVal.split('|');
@@ -1477,41 +1126,32 @@ function populateBusGrid(isUnassignedMode) {
             if (isSpottedUnassigned) pendingUpdate.spotId = isSpottedUnassigned.spotId;
             else if (isActive) pendingUpdate.spotId = isActive.spotId;
         };
-
         grid.appendChild(btn);
     });
 }
 
-if (document.getElementById('btn-prev-2')) {
-    document.getElementById('btn-prev-2').onclick = () => {
-        if (s2) s2.classList.add('hidden');
-        if (s1) s1.classList.remove('hidden');
-    };
-}
+if (document.getElementById('btn-prev-2')) document.getElementById('btn-prev-2').onclick = () => { if (s2) s2.classList.add('hidden'); if (s1) s1.classList.remove('hidden'); };
 
 if (document.getElementById('btn-next-2')) {
     document.getElementById('btn-next-2').onclick = () => {
         if (!pendingUpdate.busNo) return alert("Please select a bus number.");
 
         if (pendingUpdate.route) {
-            const activeRouteSpots = activeBuses.filter(ab => 
-                ab.routeNum === pendingUpdate.route.num && ab.name === pendingUpdate.route.name
-            );
+            const activeRouteSpots = activeBuses.filter(ab => {
+                if (ab.routes && Array.isArray(ab.routes)) return ab.routes.some(r => r.num === pendingUpdate.route.num && r.name === pendingUpdate.route.name);
+                return ab.routeNum === pendingUpdate.route.num && ab.name === pendingUpdate.route.name;
+            });
             let isDifferentBus = false;
 
             if (activeRouteSpots.length > 0) {
                 const existingBusesForRoute = activeRouteSpots.flatMap(spot => spot.busNos);
-                if (existingBusesForRoute.length > 0 && !existingBusesForRoute.includes(pendingUpdate.busNo)) {
-                    isDifferentBus = true;
-                }
+                if (existingBusesForRoute.length > 0 && !existingBusesForRoute.includes(pendingUpdate.busNo)) isDifferentBus = true;
             }
 
             if (isDifferentBus) {
                 if (s2) s2.classList.add('hidden');
                 if (s3Confirm) s3Confirm.classList.remove('hidden');
-                if (document.getElementById('step-3-confirm-summary')) {
-                    document.getElementById('step-3-confirm-summary').textContent = `Bus ${pendingUpdate.busNo} for Route ${pendingUpdate.route.num} - ${pendingUpdate.route.name}`;
-                }
+                if (document.getElementById('step-3-confirm-summary')) document.getElementById('step-3-confirm-summary').textContent = `Bus ${pendingUpdate.busNo} for Route ${pendingUpdate.route.num} - ${pendingUpdate.route.name}`;
             } else {
                 goToMapSelection(false);
             }
@@ -1521,34 +1161,18 @@ if (document.getElementById('btn-next-2')) {
     };
 }
 
-if (document.getElementById('btn-prev-3-confirm')) {
-    document.getElementById('btn-prev-3-confirm').onclick = () => {
-        if (s3Confirm) s3Confirm.classList.add('hidden');
-        if (s2) s2.classList.remove('hidden');
-    };
-}
-
-if (document.getElementById('btn-replace-yes')) {
-    document.getElementById('btn-replace-yes').onclick = () => goToMapSelection(true);
-}
-if (document.getElementById('btn-replace-no')) {
-    document.getElementById('btn-replace-no').onclick = () => goToMapSelection(false);
-}
+if (document.getElementById('btn-prev-3-confirm')) document.getElementById('btn-prev-3-confirm').onclick = () => { if (s3Confirm) s3Confirm.classList.add('hidden'); if (s2) s2.classList.remove('hidden'); };
+if (document.getElementById('btn-replace-yes')) document.getElementById('btn-replace-yes').onclick = () => goToMapSelection(true);
+if (document.getElementById('btn-replace-no')) document.getElementById('btn-replace-no').onclick = () => goToMapSelection(false);
 
 function goToMapSelection(isReplacement) {
     pendingUpdate.isReplacement = isReplacement;
     appState = 'SELECTION';
 
     let summaryStr = pendingUpdate.route ? `(Route ${pendingUpdate.route.num} - ${pendingUpdate.route.name})` : `(Unassigned Location)`;
-    
-    let extraText = '';
-    if (pendingUpdate.spotId) {
-        extraText = `<br><span style="font-size:12px;color:#16a34a;font-weight:700;line-height:1.5;display:block;margin-top:6px;">Bus already on map. If location is correct, just tap Confirm.</span>`;
-    }
+    let extraText = pendingUpdate.spotId ? `<br><span style="font-size:12px;color:#16a34a;font-weight:700;line-height:1.5;display:block;margin-top:6px;">Bus already on map. If location is correct, just tap Confirm.</span>` : '';
 
-    if (document.getElementById('step-3-summary')) {
-        document.getElementById('step-3-summary').innerHTML = `Tap the exact spot where <span style="color:#815FD7;">Bus ${pendingUpdate.busNo}</span> is physically parked ${summaryStr}${extraText}`;
-    }
+    if (document.getElementById('step-3-summary')) document.getElementById('step-3-summary').innerHTML = `Tap the exact spot where <span style="color:#815FD7;">Bus ${pendingUpdate.busNo}</span> is physically parked ${summaryStr}${extraText}`;
 
     if (s3Confirm) s3Confirm.classList.add('hidden');
     if (s2) s2.classList.add('hidden');
@@ -1561,40 +1185,16 @@ function goToMapSelection(isReplacement) {
     if (pendingUpdate.spotId && mapElement && mapContainer) {
         const spotGroup = document.getElementById(pendingUpdate.spotId);
         const circle = spotGroup ? spotGroup.querySelector('circle') : null;
-        
         if (circle) {
-            const cx = parseFloat(circle.getAttribute('cx'));
-            const cy = parseFloat(circle.getAttribute('cy'));
-            const contW = mapContainer.clientWidth;
-            const contH = mapContainer.clientHeight;
-            
-            const viewBox = mapElement.viewBox.baseVal;
-            const baseW = viewBox.width;
-            const baseH = viewBox.height;
-
-            const scaleRatio = Math.max(contW / baseW, contH / baseH);
-            const svgActualW = baseW * scaleRatio;
-            const svgActualH = baseH * scaleRatio;
-
-            const offsetX = (svgActualW - contW) / 2;
-            const offsetY = (svgActualH - contH) / 2;
-
-            const busPixelX = (cx * scaleRatio) - offsetX;
-            const busPixelY = (cy * scaleRatio) - offsetY;
-            
+            const cx = parseFloat(circle.getAttribute('cx')), cy = parseFloat(circle.getAttribute('cy'));
+            const scaleRatio = Math.max(mapContainer.clientWidth / mapElement.viewBox.baseVal.width, mapContainer.clientHeight / mapElement.viewBox.baseVal.height);
+            const offsetX = ((mapElement.viewBox.baseVal.width * scaleRatio) - mapContainer.clientWidth) / 2;
+            const offsetY = ((mapElement.viewBox.baseVal.height * scaleRatio) - mapContainer.clientHeight) / 2;
             scale = 3.5;
-            pointX = (contW / 2) - (busPixelX * scale);
-            pointY = (contH * 0.45) - (busPixelY * scale);
-        } else {
-            scale = 1.6;
-            pointX = 0;
-            pointY = 0;
-        }
-    } else {
-        scale = 1.6;
-        pointX = 0;
-        pointY = 0;
-    }
+            pointX = (mapContainer.clientWidth / 2) - (((cx * scaleRatio) - offsetX) * scale);
+            pointY = (mapContainer.clientHeight * 0.45) - (((cy * scaleRatio) - offsetY) * scale);
+        } else { scale = 1.6; pointX = 0; pointY = 0; }
+    } else { scale = 1.6; pointX = 0; pointY = 0; }
 
     if (mapElement) {
         mapElement.style.transition = 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)';
@@ -1644,51 +1244,40 @@ if (document.getElementById('btn-submit-update')) {
         if (topBar) topBar.style.transform = `translateY(0)`;
 
         try {
-            const [snapActive, snapUn] = await Promise.all([
-                get(ref(db, 'activeBuses')),
-                get(ref(db, 'unassignedBuses'))
-            ]);
-
-            const activeData = snapActive.val() || {};
-            const unData = snapUn.val() || {};
+            const [snapActive, snapUn] = await Promise.all([get(ref(db, 'activeBuses')), get(ref(db, 'unassignedBuses'))]);
+            const activeData = snapActive.val() || {}, unData = snapUn.val() || {};
             const updates = {};
             let notificationUpdates = {};
             const timestamp = Date.now();
 
-            let routeOldBus = null;
-            let isNewRoute = true;
-            let oldSpotForSelectedBus = null;
-
-            Object.keys(activeData).forEach(sId => {
-                if (!sId.startsWith('spot-')) return;
-                const item = activeData[sId];
-                if (!item) return;
-                const bList = item.busNos || (item.busNo ? [item.busNo] : []);
-                
-                if (bList.includes(selectedBus)) {
-                    oldSpotForSelectedBus = sId;
-                }
-                if (targetRoute && item.routeNum === targetRoute.num && item.name === targetRoute.name) {
-                    isNewRoute = false;
-                    routeOldBus = bList[0];
-                }
-            });
+            let routeOldBus = null, isNewRoute = true, oldSpotForSelectedBus = null;
 
             if (activeData[targetSpot]) {
                 const existingSpot = activeData[targetSpot];
-                const isDifferentRouteOrDestination = !targetRoute || 
-                    existingSpot.routeNum !== targetRoute.num || 
-                    existingSpot.name !== targetRoute.name;
+                const existingBuses = existingSpot.busNos || (existingSpot.busNo ? [existingSpot.busNo] : []);
+                const isSameBus = existingBuses.includes(selectedBus);
 
-                if (isDifferentRouteOrDestination) {
-                    alert(`Slot occupied by Route ${existingSpot.routeNum} - ${existingSpot.name}. Please mark it departed first.`);
+                if (!isSameBus && existingBuses.length > 0) {
+                    alert(`Slot is occupied by Bus ${existingBuses.join(', ')}. A parking slot can only hold one physical bus at a time. Please mark it departed first.`);
                     document.getElementById('btn-submit-update').disabled = false;
                     return;
                 }
             }
 
-            Object.keys(activeData).forEach(sId => {
-                if (!sId.startsWith('spot-')) return;
+            Object.keys(activeData).filter(k => k.startsWith('spot-')).forEach(sId => {
+                const item = activeData[sId];
+                if (!item) return;
+                const bList = item.busNos || (item.busNo ? [item.busNo] : []);
+                if (bList.includes(selectedBus)) oldSpotForSelectedBus = sId;
+                
+                const hasRoute = (item.routes && Array.isArray(item.routes))
+                    ? item.routes.some(r => targetRoute && r.num === targetRoute.num && r.name === targetRoute.name)
+                    : (targetRoute && item.routeNum === targetRoute.num && item.name === targetRoute.name);
+
+                if (hasRoute) { isNewRoute = false; routeOldBus = bList[0]; }
+            });
+
+            Object.keys(activeData).filter(k => k.startsWith('spot-')).forEach(sId => {
                 let spotData = activeData[sId];
                 if (!spotData) return;
                 let bList = spotData.busNos || (spotData.busNo ? [spotData.busNo] : []);
@@ -1697,13 +1286,17 @@ if (document.getElementById('btn-submit-update')) {
 
                 if (spotData.users >= 999 && Object.keys(voters).length === 0) voters = { 'admin_locked': true };
 
-                if (bList.includes(selectedBus)) {
+                if (bList.includes(selectedBus) && sId !== targetSpot) {
                     bList = bList.filter(b => b !== selectedBus);
                     modified = true;
                     if (voters[currentDeviceToken]) delete voters[currentDeviceToken];
                 }
 
-                if (targetRoute && pendingUpdate.isReplacement && spotData.routeNum === targetRoute.num && spotData.name === targetRoute.name) {
+                const matchesRoute = (spotData.routes && Array.isArray(spotData.routes))
+                    ? spotData.routes.some(r => targetRoute && r.num === targetRoute.num && r.name === targetRoute.name)
+                    : (targetRoute && spotData.routeNum === targetRoute.num && spotData.name === targetRoute.name);
+
+                if (targetRoute && pendingUpdate.isReplacement && matchesRoute) {
                     bList = [];
                     modified = true;
                     if (voters[currentDeviceToken]) delete voters[currentDeviceToken];
@@ -1720,133 +1313,93 @@ if (document.getElementById('btn-submit-update')) {
                 }
             });
 
-            Object.keys(unData).forEach(sId => {
-                if (!sId.startsWith('spot-')) return;
+            Object.keys(unData).filter(k => k.startsWith('spot-')).forEach(sId => {
                 if (unData[sId] && unData[sId].busNo === selectedBus) updates[`unassignedBuses/${sId}`] = null;
             });
 
             if (targetRoute) {
-                let existingBusesAtSpot = [];
+                let existingRoutes = [];
                 let existingVoters = {};
 
                 if (activeData[targetSpot]) {
-                    if (activeData[targetSpot].routeNum === targetRoute.num && activeData[targetSpot].name === targetRoute.name) {
-                        existingBusesAtSpot = activeData[targetSpot].busNos || [];
-                        if (pendingUpdate.isReplacement) existingBusesAtSpot = [];
-                        existingVoters = activeData[targetSpot].votersLedger || {};
-                        if (activeData[targetSpot].users >= 999 && Object.keys(existingVoters).length === 0) {
-                            existingVoters = { 'admin_locked': true };
-                        }
-                    }
+                    const spotData = activeData[targetSpot];
+                    if (spotData.routes && Array.isArray(spotData.routes)) existingRoutes = [...spotData.routes];
+                    else if (spotData.routeNum && spotData.name) existingRoutes = [{ num: spotData.routeNum, name: spotData.name }];
+
+                    if (pendingUpdate.isReplacement) existingRoutes = [];
+                    
+                    existingVoters = spotData.votersLedger || {};
+                    if (spotData.users >= 999 && Object.keys(existingVoters).length === 0) existingVoters = { 'admin_locked': true };
                 }
 
-                existingBusesAtSpot = existingBusesAtSpot.filter(b => b !== selectedBus);
-                existingBusesAtSpot.push(selectedBus);
+                if (!existingRoutes.some(r => r.num === targetRoute.num && r.name === targetRoute.name)) {
+                    existingRoutes.push({ num: targetRoute.num, name: targetRoute.name });
+                }
+
                 existingVoters[currentDeviceToken] = true;
 
-                let notifTitle = null;
-                let notifMessage = null;
-
                 if (pendingUpdate.isReplacement && !isNewRoute && routeOldBus && routeOldBus !== selectedBus) {
-                    notifTitle = `Bus Changed for ${targetRoute.name}`;
-                    notifMessage = `Bus for ${targetRoute.name} has changed to Bus ${selectedBus}.`;
-                }
-
-                if (notifTitle && notifMessage) {
                     const notifId = Date.now().toString() + "_" + Math.random().toString(36).substr(2, 4);
-                    
                     notificationUpdates[notifId] = {
-                        title: notifTitle,
-                        message: notifMessage,
+                        title: `Bus Changed for ${targetRoute.name}`,
+                        message: `Bus for ${targetRoute.name} has changed to Bus ${selectedBus}.`,
                         routeName: targetRoute.name,
                         createdAt: Date.now(),
                         senderToken: currentDeviceToken
                     };
-
                     fetch('https://seenmybus-notifier.rahmansaif822.workers.dev/broadcast', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            title: notifTitle,
-                            message: notifMessage,
-                            routeName: targetRoute.name,
-                            sender: currentDeviceToken
-                        })
-                    }).catch(e => console.error("Worker ping failed", e));
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ title: `Bus Changed for ${targetRoute.name}`, message: `Bus for ${targetRoute.name} has changed to Bus ${selectedBus}.`, routeName: targetRoute.name, sender: currentDeviceToken })
+                    }).catch(e => {});
                 }
+
+                const combinedNums = existingRoutes.map(r => r.num).join(', ');
+                const combinedNames = existingRoutes.map(r => r.name).join(' + ');
 
                 updates[`activeBuses/${targetSpot}`] = {
                     busNo: selectedBus,
-                    busNos: existingBusesAtSpot,
-                    routeNum: targetRoute.num,
-                    name: targetRoute.name,
+                    busNos: [selectedBus],
+                    routeNum: combinedNums,
+                    name: combinedNames,
+                    routes: existingRoutes,
                     users: existingVoters['admin_locked'] ? 999 : Object.keys(existingVoters).length,
                     votersLedger: existingVoters,
                     updatedAt: timestamp,
                     updatedBy: currentDeviceToken
                 };
             } else {
-                updates[`unassignedBuses/${targetSpot}`] = {
-                    busNo: selectedBus,
-                    updatedAt: timestamp,
-                    updatedBy: currentDeviceToken
-                };
+                updates[`unassignedBuses/${targetSpot}`] = { busNo: selectedBus, updatedAt: timestamp, updatedBy: currentDeviceToken };
             }
 
             await update(ref(db), updates);
-            if (Object.keys(notificationUpdates).length > 0) {
-                await update(ref(db, 'broadcastNotifications'), notificationUpdates);
-            }
+            if (Object.keys(notificationUpdates).length > 0) await update(ref(db, 'broadcastNotifications'), notificationUpdates);
             await addContributionPoints(10);
-        } catch (err) {
-            console.error("Sync error:", err);
-        } finally {
-            document.getElementById('btn-submit-update').disabled = false;
-        }
+        } catch (err) {} finally { document.getElementById('btn-submit-update').disabled = false; }
     };
 }
 
-// --- 20. Real-Time Bus Validation System ---
 const valBubble = document.getElementById('bus-validation-bubble');
-const valFab = document.getElementById('val-fab');
-const valCard = document.getElementById('val-card');
+const valFab = document.getElementById('val-fab'), valCard = document.getElementById('val-card');
 const valBusDetails = document.getElementById('val-bus-details');
-const btnValYes = document.getElementById('btn-val-yes');
-const btnValNo = document.getElementById('btn-val-no');
-const btnValCollapse = document.getElementById('val-btn-collapse');
+const btnValYes = document.getElementById('btn-val-yes'), btnValNo = document.getElementById('btn-val-no'), btnValCollapse = document.getElementById('val-btn-collapse');
 
-let currentValidationBus = null;
-let isValidationCardCollapsed = false;
+let currentValidationBus = null, isValidationCardCollapsed = false;
 
-if (valBubble) {
-    ['touchstart', 'touchmove', 'touchend', 'mousedown', 'mousemove', 'mouseup', 'click', 'wheel'].forEach(evt => {
-        valBubble.addEventListener(evt, (e) => e.stopPropagation(), { passive: false });
-    });
-}
+if (valBubble) ['touchstart', 'touchmove', 'touchend', 'mousedown', 'mousemove', 'mouseup', 'click', 'wheel'].forEach(evt => { valBubble.addEventListener(evt, (e) => e.stopPropagation(), { passive: false }); });
 
 function showValidationCard(busInfo) {
     if (!valBubble || !busInfo) return;
-
-    if (!currentValidationBus || currentValidationBus.spotId !== busInfo.spotId) {
-        isValidationCardCollapsed = false; 
-    }
-
+    if (!currentValidationBus || currentValidationBus.spotId !== busInfo.spotId) isValidationCardCollapsed = false; 
     currentValidationBus = busInfo;
     const busDisplay = busInfo.busNos ? busInfo.busNos.join(', ') : busInfo.busNo;
     
-    if (valBusDetails) {
-        valBusDetails.textContent = `Bus number ${busDisplay} for ${busInfo.name} has been parked here.`;
-    }
+    let routeDesc = busInfo.name;
+    if (busInfo.routes && Array.isArray(busInfo.routes)) routeDesc = busInfo.routes.map(r => `Route ${r.num} (${r.name})`).join(' & ');
 
+    if (valBusDetails) valBusDetails.textContent = `Bus number ${busDisplay} for ${routeDesc} has been parked here.`;
     valBubble.classList.remove('hidden');
-    
-    if (isValidationCardCollapsed) {
-        if (valFab) valFab.classList.remove('hidden');
-        if (valCard) valCard.classList.add('hidden');
-    } else {
-        if (valFab) valFab.classList.add('hidden');
-        if (valCard) valCard.classList.remove('hidden');
-    }
+    if (isValidationCardCollapsed) { if (valFab) valFab.classList.remove('hidden'); if (valCard) valCard.classList.add('hidden'); }
+    else { if (valFab) valFab.classList.add('hidden'); if (valCard) valCard.classList.remove('hidden'); }
 }
 
 function hideValidationCard() {
@@ -1856,53 +1409,22 @@ function hideValidationCard() {
     if (valFab) valFab.classList.add('hidden');
 }
 
-if (valFab) {
-    valFab.onclick = () => {
-        isValidationCardCollapsed = false;
-        valFab.classList.add('hidden');
-        valCard.classList.remove('hidden');
-    };
-}
-
-if (btnValCollapse) {
-    btnValCollapse.onclick = () => {
-        isValidationCardCollapsed = true;
-        valCard.classList.add('hidden');
-        valFab.classList.remove('hidden');
-    };
-}
+if (valFab) valFab.onclick = () => { isValidationCardCollapsed = false; valFab.classList.add('hidden'); valCard.classList.remove('hidden'); };
+if (btnValCollapse) btnValCollapse.onclick = () => { isValidationCardCollapsed = true; valCard.classList.add('hidden'); valFab.classList.remove('hidden'); };
 
 if (btnValYes) {
     btnValYes.onclick = async () => {
-        if (window.isTourActive) {
-            if (typeof hideValidationCard === 'function') hideValidationCard();
-            if (typeof window.nextTourStep === 'function') window.nextTourStep();
-            return;
-        }
-        
+        if (window.isTourActive) { if (typeof hideValidationCard === 'function') hideValidationCard(); if (typeof window.nextTourStep === 'function') window.nextTourStep(); return; }
         if (!currentValidationBus) return;
         const spotId = currentValidationBus.spotId;
         const item = activeBuses.find(b => b.spotId === spotId);
-        if (!item) {
-            alert("This bus is no longer active at this slot.");
-            hideValidationCard();
-            return;
-        }
-
-        if (item.updatedBy === currentDeviceToken || item.updatedBy === ('ADMIN_' + currentDeviceToken)) {
-            alert("You posted the latest update for this bus. Only others can validate it.");
-            return;
-        }
-
+        if (!item) { alert("This bus is no longer active at this slot."); hideValidationCard(); return; }
+        if (item.updatedBy === currentDeviceToken || item.updatedBy === ('ADMIN_' + currentDeviceToken)) { alert("You posted the latest update for this bus. Only others can validate it."); return; }
         const voters = item.votersLedger || {};
-        if (voters[currentDeviceToken]) {
-            alert("You have already confirmed this bus location.");
-            return;
-        }
+        if (voters[currentDeviceToken]) { alert("You have already confirmed this bus location."); return; }
 
         voters[currentDeviceToken] = true;
         const newCount = voters['admin_locked'] ? 999 : Object.keys(voters).length;
-
         const updates = {};
         updates[`activeBuses/${spotId}/votersLedger`] = voters;
         updates[`activeBuses/${spotId}/users`] = newCount;
@@ -1913,50 +1435,36 @@ if (btnValYes) {
             await addContributionPoints(5);
             alert("Thanks for keeping the AJU community updated!");
             hideValidationCard();
-        } catch (err) {
-            console.error("Validation vote error:", err);
-        } finally {
-            btnValYes.disabled = false;
-        }
+        } catch (err) {} finally { btnValYes.disabled = false; }
     };
 }
 
 if (btnValNo) {
     btnValNo.onclick = () => {
-        if (window.isTourActive) {
-            if (typeof hideValidationCard === 'function') hideValidationCard();
-            if (typeof window.nextTourStep === 'function') window.nextTourStep();
-            return;
-        }
-
+        if (window.isTourActive) { if (typeof hideValidationCard === 'function') hideValidationCard(); if (typeof window.nextTourStep === 'function') window.nextTourStep(); return; }
         if (!currentValidationBus) return;
-
         const targetBus = currentValidationBus;
         hideValidationCard();
 
         if (modal) modal.classList.remove('hidden');
         switchTab('PARK');
 
-        pendingUpdate.route = ALL_ROUTES.find(r => r.num === targetBus.routeNum && r.name === targetBus.name) || 
-                             ALL_ROUTES.find(r => r.num === targetBus.routeNum) || null;
+        let primaryRoute = null;
+        if (targetBus.routes && targetBus.routes.length > 0) primaryRoute = targetBus.routes[0];
+
+        pendingUpdate.route = primaryRoute || ALL_ROUTES.find(r => r.num === targetBus.routeNum && r.name === targetBus.name) || ALL_ROUTES.find(r => r.num === targetBus.routeNum) || null;
         pendingUpdate.busNo = (targetBus.busNos && targetBus.busNos[0]) || targetBus.busNo || null;
         pendingUpdate.spotId = targetBus.spotId;
         pendingUpdate.isReplacement = false;
 
-        if (rSelect && pendingUpdate.route) {
-            rSelect.value = `${pendingUpdate.route.num}|${pendingUpdate.route.name}`;
-        }
+        if (rSelect && pendingUpdate.route) rSelect.value = `${pendingUpdate.route.num}|${pendingUpdate.route.name}`;
 
         if (s1) s1.classList.add('hidden');
         if (s2) s2.classList.remove('hidden');
         if (s3Confirm) s3Confirm.classList.add('hidden');
-
-        if (document.getElementById('step-2-summary') && pendingUpdate.route) {
-            document.getElementById('step-2-summary').textContent = `Route ${pendingUpdate.route.num} - ${pendingUpdate.route.name}`;
-        }
+        if (document.getElementById('step-2-summary') && pendingUpdate.route) document.getElementById('step-2-summary').textContent = `Route ${pendingUpdate.route.num} - ${pendingUpdate.route.name}`;
 
         populateBusGrid(false);
-
         if (grid && pendingUpdate.busNo) {
             const activeBtn = Array.from(grid.querySelectorAll('.grid-bus')).find(el => el.textContent.trim() === pendingUpdate.busNo);
             if (activeBtn) activeBtn.classList.add('yellow-active');
@@ -1964,7 +1472,7 @@ if (btnValNo) {
     };
 }
 
-// --- 21. Industrial Network Sentinel Engine ---
+// --- Industrial Network Sentinel Engine ---
 const offlineOverlay = document.getElementById('offline-screen');
 const btnRetryNetwork = document.getElementById('btn-retry-network');
 let offlineDebounceTimer = null;
@@ -1975,33 +1483,20 @@ async function pingNetwork() {
     try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 2500);
-        
-        const res = await fetch(`/manifest.json?_probe=${Date.now()}`, {
-            method: 'HEAD',
-            cache: 'no-store',
-            signal: controller.signal
-        });
+        const res = await fetch(`/manifest.json?_probe=${Date.now()}`, { method: 'HEAD', cache: 'no-store', signal: controller.signal });
         clearTimeout(timeoutId);
         return res.ok;
-    } catch (e) {
-        return false;
-    }
+    } catch (e) { return false; }
 }
 
 function showOfflineUI() {
     isCurrentlyOffline = true;
-    if (offlineOverlay) {
-        offlineOverlay.classList.add('active');
-        offlineOverlay.setAttribute('aria-hidden', 'false');
-    }
+    if (offlineOverlay) { offlineOverlay.classList.add('active'); offlineOverlay.setAttribute('aria-hidden', 'false'); }
 }
 
 function hideOfflineUI() {
     isCurrentlyOffline = false;
-    if (offlineOverlay) {
-        offlineOverlay.classList.remove('active');
-        offlineOverlay.setAttribute('aria-hidden', 'true');
-    }
+    if (offlineOverlay) { offlineOverlay.classList.remove('active'); offlineOverlay.setAttribute('aria-hidden', 'true'); }
     goOnline(db);
 }
 
@@ -2023,59 +1518,32 @@ if (btnRetryNetwork) {
     btnRetryNetwork.addEventListener('click', async () => {
         btnRetryNetwork.disabled = true;
         btnRetryNetwork.textContent = 'Checking connection...';
-
         const isConnected = await pingNetwork();
-
         if (isConnected) {
             btnRetryNetwork.textContent = 'Connected!';
-            setTimeout(() => {
-                hideOfflineUI();
-                btnRetryNetwork.disabled = false;
-                btnRetryNetwork.textContent = 'Try Again';
-            }, 600);
+            setTimeout(() => { hideOfflineUI(); btnRetryNetwork.disabled = false; btnRetryNetwork.textContent = 'Try Again'; }, 600);
         } else {
             btnRetryNetwork.textContent = 'Still Offline';
-            setTimeout(() => {
-                btnRetryNetwork.disabled = false;
-                btnRetryNetwork.textContent = 'Try Again';
-            }, 1500);
+            setTimeout(() => { btnRetryNetwork.disabled = false; btnRetryNetwork.textContent = 'Try Again'; }, 1500);
         }
     });
 }
+setTimeout(async () => { if (!navigator.onLine) { const isConnected = await pingNetwork(); if (!isConnected) showOfflineUI(); } }, 1000);
 
-// Initial status check after first frame paint
-setTimeout(async () => {
-    if (!navigator.onLine) {
-        const isConnected = await pingNetwork();
-        if (!isConnected) showOfflineUI();
-    }
-}, 1000);
-
-// --- 22. Viewport & Navigation Recovery (pageshow) ---
+// --- Viewport & Sidebar Safe Navigation Recovery ---
 window.addEventListener('pageshow', (event) => {
-    window.scrollTo(0, 0);
-    document.body.scrollTop = 0;
-
-    if (sidePanel) sidePanel.classList.remove('open');
+    window.scrollTo(0, 0); document.body.scrollTop = 0;
+    if (sidePanel) { sidePanel.classList.remove('open'); sidePanel.scrollTop = 0; }
     if (sideOverlay) sideOverlay.classList.add('hidden');
-
     currentTranslate = 0;
-    if (draggableSheet) {
-        draggableSheet.style.transition = 'transform 0.3s ease';
-        draggableSheet.style.transform = 'translateY(0px)';
-    }
-
-    if (fixedFooter) {
-        fixedFooter.classList.remove('hidden');
-        fixedFooter.style.transform = 'translateY(0)';
-    }
+    if (draggableSheet) { draggableSheet.style.transition = 'transform 0.3s ease'; draggableSheet.style.transform = 'translateY(0px)'; }
+    if (fixedFooter) { fixedFooter.classList.remove('hidden'); fixedFooter.style.transform = 'translateY(0)'; }
     if (topBar) topBar.style.transform = 'translateY(0)';
-    
     appState = 'VIEW';
     if (mapElement) renderMapSpots();
 });
 
-// --- 23. Interactive Onboarding Controller ---
+// --- Interactive Onboarding Controller ---
 let currentTourStep = 1;
 const totalTourSteps = 10;
 window.isTourActive = false;
@@ -2094,9 +1562,7 @@ window.forceTourRefresh = async function() {
 };
 
 function checkFirstVisitOnboarding() {
-    if (!localStorage.getItem('smb_tour_completed')) {
-        setTimeout(() => showTourStep(1), 1000);
-    }
+    if (!localStorage.getItem('smb_tour_completed')) setTimeout(() => showTourStep(1), 1000);
 }
 
 window.showTourStep = function(stepNum) {
@@ -2146,12 +1612,10 @@ window.showTourStep = function(stepNum) {
     if (stepNum === 5) {
         window.isTourActive = true;
         window.forceTourRefresh();
-
         if (typeof hideValidationCard === 'function') hideValidationCard();
 
         setTimeout(() => {
             focusOnSpot('spot-15');
-
             const adityapurSpot = document.getElementById('spot-15');
             if (adityapurSpot) adityapurSpot.classList.add('tour-target-glow');
 
@@ -2163,9 +1627,7 @@ window.showTourStep = function(stepNum) {
                         setTimeout(() => {
                             window.nextTourStep();
                             const busInfo = activeBuses.find(b => b.spotId === sId);
-                            if (busInfo && typeof showValidationCard === 'function') {
-                                showValidationCard(busInfo);
-                            }
+                            if (busInfo && typeof showValidationCard === 'function') showValidationCard(busInfo);
                         }, 300);
                     }, { once: true, signal });
                 }
@@ -2175,8 +1637,7 @@ window.showTourStep = function(stepNum) {
 
     if (stepNum === 6) {
         setTimeout(() => {
-            const btnYes = document.getElementById('btn-val-yes');
-            const btnNo = document.getElementById('btn-val-no');
+            const btnYes = document.getElementById('btn-val-yes'), btnNo = document.getElementById('btn-val-no');
             if (btnYes) btnYes.classList.add('tour-target-html');
             if (btnNo) btnNo.classList.add('tour-target-html');
         }, 500);
@@ -2189,8 +1650,7 @@ window.showTourStep = function(stepNum) {
 
     if (stepNum === 8) {
         setTimeout(() => {
-            const listEl = document.querySelector('#bus-list .bus-item[data-route-key="route_6_Adityapur"]') 
-                        || document.querySelector('#bus-list .bus-item');
+            const listEl = document.querySelector('#bus-list .bus-item[data-route-key="route_6_Adityapur"]') || document.querySelector('#bus-list .bus-item');
             if (listEl) listEl.classList.add('tour-target-html');
         }, 300);
     }
@@ -2211,12 +1671,8 @@ window.nextTourStep = function() {
     if (typeof hideValidationCard === 'function') hideValidationCard();
     document.querySelectorAll('.tour-target-glow').forEach(el => el.classList.remove('tour-target-glow'));
     document.querySelectorAll('.tour-target-html').forEach(el => el.classList.remove('tour-target-html'));
-
-    if (currentTourStep < totalTourSteps) {
-        window.showTourStep(currentTourStep + 1);
-    } else {
-        window.finishTour();
-    }
+    if (currentTourStep < totalTourSteps) window.showTourStep(currentTourStep + 1);
+    else window.finishTour();
 };
 
 window.skipTour = function() { window.finishTour(); };
@@ -2228,11 +1684,7 @@ window.finishTour = function() {
     
     lastActiveDataSignature = null;
     lastUnassignedDataSignature = null;
-    activeBuses = [];
-    unassignedBuses = [];
-    busLocationTracker = {};
-    routeLocationTracker = {};
-
+    activeBuses = []; unassignedBuses = []; busLocationTracker = {}; routeLocationTracker = {};
     window.forceTourRefresh();
     
     const overlay = document.getElementById('onboarding-overlay');
@@ -2240,10 +1692,7 @@ window.finishTour = function() {
     const modal = document.getElementById('modal-overlay');
     if (modal) modal.classList.add('hidden');
     if (typeof hideValidationCard === 'function') hideValidationCard();
-
-    if (typeof window.triggerPostTourConsents === 'function') {
-        window.triggerPostTourConsents();
-    }
+    if (typeof window.triggerPostTourConsents === 'function') window.triggerPostTourConsents();
 };
 
 checkFirstVisitOnboarding();
@@ -2260,12 +1709,6 @@ if (replayTourBtn) {
     };
 }
 
-// Developer Note Collapse Toggle
 const devNoteToggle = document.getElementById('dev-note-toggle');
 const devNoteCard = document.getElementById('dev-note-card');
-
-if (devNoteToggle && devNoteCard) {
-    devNoteToggle.onclick = () => {
-        devNoteCard.classList.toggle('collapsed');
-    };
-}
+if (devNoteToggle && devNoteCard) { devNoteToggle.onclick = () => { devNoteCard.classList.toggle('collapsed'); }; }

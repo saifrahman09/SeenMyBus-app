@@ -1,3 +1,8 @@
 User-agent: *
 Allow: /
+Disallow: /admin-dashboard.html
+Disallow: /privacy-policy.html
+Disallow: /terms-and-conditions.html
+Disallow: /faq.html
+
 Sitemap: https://seenmybus.netlify.app/sitemap.xml

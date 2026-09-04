@@ -528,3 +528,89 @@ html, body {
     box-sizing: border-box !important;
     background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.96) 28%, #ffffff 100%);
 }
+
+/* --- Community Consensus Dynamic Badges --- */
+.verified-official {
+    color: #059669 !important;
+    font-weight: 700 !important;
+    background: #ecfdf5;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.verified-consensus {
+    color: #815FD7 !important;
+    font-weight: 700 !important;
+    background: #f5f2fc;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+/* --- Mobile Viewport Enforcements & Safe-Area Fixes --- */
+html, body {
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+}
+
+#app-container {
+    height: 100dvh !important;
+    position: relative;
+    overflow: hidden;
+}
+
+/* --- Sidebar Mobile Viewport Scroll & Safe-Area Fix --- */
+.side-panel {
+    position: fixed;
+    top: 0;
+    right: -340px;
+    width: min(320px, 85vw);
+    height: 100dvh !important;
+    max-height: 100dvh !important;
+    background: var(--bg-white, #ffffff);
+    z-index: 99999;
+    box-shadow: -6px 0 24px rgba(0, 0, 0, 0.12);
+    transition: right 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    overflow: hidden !important;
+    box-sizing: border-box;
+}
+
+.side-panel.open {
+    right: 0 !important;
+}
+
+.side-panel-scroll-area {
+    flex: 1 1 auto;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 12px;
+}
+
+.panel-footer {
+    flex-shrink: 0;
+    margin-top: auto;
+    padding: 16px 24px calc(16px + env(safe-area-inset-bottom, 16px)) 24px !important;
+    border-top: 1px solid #f1f5f9;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    background: #ffffff;
+    box-sizing: border-box;
+}
+
+/* Fixed Bottom Footers */
+#fixed-footer, 
+#selection-footer {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+    z-index: 1000 !important;
+    padding-bottom: max(16px, env(safe-area-inset-bottom, 16px)) !important;
+    box-sizing: border-box !important;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.96) 28%, #ffffff 100%);
+}
