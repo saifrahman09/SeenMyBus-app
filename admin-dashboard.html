@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
+    <!-- SEO Disambiguation & Crawler Guard -->
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="SeenMyBus Admin Portal - Authorized Personnel Only.">
+
     <!-- Preconnect to Firebase CDNs for instant loading -->
     <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
     <link rel="preconnect" href="https://seenmybus-default-rtdb.asia-southeast1.firebasedatabase.app" crossorigin>
@@ -10,6 +15,7 @@
     <title>Admin Dashboard | SeenMyBus</title>
     <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./map.css">
+    
     <style>
         :root {
             --bg-gray: #f8f6fc;
@@ -24,13 +30,11 @@
             --form-focus: #815FD7;
             --form-text: #1E1B4B;
         }
-
         *, *::before, *::after {
             box-sizing: border-box;
             -webkit-tap-highlight-color: transparent !important;
             outline: none;
         }
-
         html, body {
             margin: 0;
             padding: 0;
@@ -40,368 +44,158 @@
             overflow-y: auto;
             -webkit-overflow-scrolling: touch;
         }
+        
+        /* --- Industrial Offline Sentinel UI --- */
+        .offline-overlay {
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100dvh;
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            z-index: 999999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        .offline-overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .offline-card {
+            background: #ffffff;
+            padding: 32px 24px;
+            border-radius: 28px;
+            text-align: center;
+            max-width: 340px;
+            width: 100%;
+            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.2);
+        }
+        .offline-icon-wrap {
+            width: 76px; height: 76px;
+            background: #f5f2fc; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 18px auto;
+        }
+        .offline-title { font-size: 19px; font-weight: 700; margin: 0 0 8px 0; }
+        .offline-desc { font-size: 13.5px; color: #64748b; margin: 0 0 24px 0; line-height: 1.5; }
+        .offline-retry-btn {
+            width: 100%; height: 46px; border-radius: 14px; border: none;
+            background: linear-gradient(180deg, var(--btn-grad-start) 0%, var(--btn-grad-end) 100%);
+            color: white; font-weight: 700; font-size: 15px; cursor: pointer;
+        }
 
         .ui-icon {
-            width: 22px;
-            height: 22px;
-            stroke: var(--btn-grad-start);
-            fill: none;
-            stroke-width: 2.5px;
-            stroke-linecap: round;
-            stroke-linejoin: round;
-            flex-shrink: 0;
+            width: 22px; height: 22px; stroke: var(--btn-grad-start);
+            fill: none; stroke-width: 2.5px; stroke-linecap: round;
+            stroke-linejoin: round; flex-shrink: 0;
         }
-
-        .admin-layout {
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 24px 16px 100px 16px;
-        }
-
+        .admin-layout { max-width: 900px; margin: 0 auto; padding: 24px 16px 100px 16px; }
+        
         #auth-screen {
-            background: white;
-            padding: 50px 30px;
-            border-radius: 32px;
-            text-align: center;
-            box-shadow: var(--card-shadow);
-            max-width: 420px;
-            margin: 80px auto;
-            position: relative;
+            background: white; padding: 50px 30px; border-radius: 32px;
+            text-align: center; box-shadow: var(--card-shadow);
+            max-width: 420px; margin: 80px auto; position: relative;
             border: 1px solid rgba(129, 95, 215, 0.1);
         }
-
         .btn-back-home {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            position: absolute;
-            top: -50px;
-            left: 0;
-            color: var(--btn-grad-start);
-            text-decoration: none;
-            font-weight: 700;
-            font-size: 14px;
-            background: white;
-            padding: 10px 16px;
-            border-radius: 100px;
-            box-shadow: 0 4px 15px rgba(129, 95, 215, 0.1);
+            display: inline-flex; align-items: center; gap: 6px; position: absolute;
+            top: -50px; left: 0; color: var(--btn-grad-start); text-decoration: none;
+            font-weight: 700; font-size: 14px; background: white; padding: 10px 16px;
+            border-radius: 100px; box-shadow: 0 4px 15px rgba(129, 95, 215, 0.1);
         }
-
-        #auth-screen h2 {
-            margin: 0 0 30px 0;
-            color: var(--text-black);
-            font-size: 22px;
-            font-weight: 800;
-        }
-
+        #auth-screen h2 { margin: 0 0 30px 0; color: var(--text-black); font-size: 22px; font-weight: 800; }
+        
         .btn-google-auth {
-            background: white;
-            border: 1.5px solid #E2E8F0;
-            padding: 14px 20px;
-            border-radius: 16px;
-            font-size: 15px;
-            font-weight: 700;
-            color: #1e293b;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-            width: 100%;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+            background: white; border: 1.5px solid #E2E8F0; padding: 14px 20px;
+            border-radius: 16px; font-size: 15px; font-weight: 700; color: #1e293b;
+            display: flex; align-items: center; justify-content: center; gap: 12px;
+            width: 100%; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.03);
             font-family: inherit;
         }
-
-        .btn-google-auth:active {
-            transform: scale(0.97);
-        }
-
         .admin-nav {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: white;
-            padding: 16px 20px;
-            border-radius: 20px;
-            box-shadow: var(--card-shadow);
-            margin-bottom: 24px;
+            display: flex; justify-content: space-between; align-items: center;
+            background: white; padding: 16px 20px; border-radius: 20px;
+            box-shadow: var(--card-shadow); margin-bottom: 24px;
             border: 1px solid rgba(129, 95, 215, 0.1);
         }
-
-        .brand-logo {
-            height: 38px;
-            width: auto;
-        }
-
+        .brand-logo { height: 38px; width: auto; }
         .btn-logout {
-            background: #fff0f0;
-            color: #e11d48;
-            border: 1px solid #ffe4e6;
-            padding: 10px 16px;
-            border-radius: 12px;
-            font-size: 13px;
-            font-weight: 700;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            transition: transform 0.15s ease;
-            font-family: inherit;
+            background: #fff0f0; color: #e11d48; border: 1px solid #ffe4e6;
+            padding: 10px 16px; border-radius: 12px; font-size: 13px; font-weight: 700;
+            cursor: pointer; display: flex; align-items: center; gap: 8px; font-family: inherit;
         }
-
-        .btn-logout:active {
-            transform: scale(0.95);
-        }
-
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 24px;
-        }
-
-        @media(min-width: 768px) {
-            .dashboard-grid {
-                grid-template-columns: 1fr 1fr;
-            }
-        }
-
-        .card {
-            background: white;
-            border-radius: 28px;
-            padding: 26px;
-            box-shadow: var(--card-shadow);
-            border: 1px solid rgba(129, 95, 215, 0.1);
-        }
-
-        .card.full-width {
-            grid-column: 1 / -1;
-        }
-
-        .card-header {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-
-        .card-header h3 {
-            margin: 0;
-            font-size: 17px;
-            font-weight: 800;
-            color: var(--text-black);
-        }
-
-        .form-group {
-            margin-bottom: 18px;
-        }
-
-        .form-group label {
-            display: block;
-            font-size: 11.5px;
-            font-weight: 700;
-            color: #64748b;
-            margin-bottom: 8px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
+        .dashboard-grid { display: grid; grid-template-columns: 1fr; gap: 24px; }
+        @media(min-width: 768px) { .dashboard-grid { grid-template-columns: 1fr 1fr; } }
+        
+        .card { background: white; border-radius: 28px; padding: 26px; box-shadow: var(--card-shadow); border: 1px solid rgba(129, 95, 215, 0.1); }
+        .card.full-width { grid-column: 1 / -1; }
+        .card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+        .card-header h3 { margin: 0; font-size: 17px; font-weight: 800; color: var(--text-black); }
+        .form-group { margin-bottom: 18px; }
+        .form-group label { display: block; font-size: 11.5px; font-weight: 700; color: #64748b; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
         .form-control {
-            width: 100%;
-            padding: 16px 18px;
-            border-radius: 16px;
-            border: 1.5px solid var(--form-border);
-            background: var(--form-bg);
-            font-size: 15px;
-            color: var(--form-text);
-            font-family: inherit;
-            font-weight: 600;
-            transition: all 0.25s ease;
+            width: 100%; padding: 16px 18px; border-radius: 16px; border: 1.5px solid var(--form-border);
+            background: var(--form-bg); font-size: 15px; color: var(--form-text);
+            font-family: inherit; font-weight: 600;
         }
-
-        .form-control::placeholder {
-            color: #A78BFA;
-            font-weight: 500;
-        }
-
-        .form-control:focus {
-            border-color: var(--form-focus);
-            background: #FFFFFF;
-            box-shadow: 0 0 0 4px rgba(129, 95, 215, 0.15);
-        }
-
         .btn-action {
-            width: 100%;
-            height: 54px;
-            border: none;
-            border-radius: 16px;
+            width: 100%; height: 54px; border: none; border-radius: 16px;
             background: linear-gradient(180deg, var(--btn-grad-start) 0%, var(--btn-grad-end) 100%);
-            box-shadow:
-                inset 0px 4px 4px rgba(214, 198, 255, 0.34),
-                0 6px 16px rgba(68, 50, 113, 0.25);
-            color: white;
-            font-weight: 700;
-            font-size: 15.5px;
-            cursor: pointer;
-            transition: transform 0.15s ease;
-            font-family: inherit;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 10px;
+            color: white; font-weight: 700; font-size: 15.5px; cursor: pointer;
+            display: flex; justify-content: center; align-items: center; gap: 10px;
         }
-
-        .btn-action:active {
-            transform: scale(0.97);
-        }
-
         .btn-danger-action {
-            background: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%);
-            color: white;
-            border: none;
-            height: 54px;
-            border-radius: 16px;
-            font-weight: 700;
-            font-size: 15px;
-            cursor: pointer;
-            width: 100%;
-            box-shadow:
-                inset 0px 4px 4px rgba(255, 200, 200, 0.3),
-                0 6px 16px rgba(185, 28, 28, 0.25);
+            background: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%); color: white;
+            border: none; height: 54px; border-radius: 16px; font-weight: 700; font-size: 15px;
+            cursor: pointer; width: 100%;
         }
-
-        #admin-map-wrapper {
-            margin-top: 10px;
-            border-radius: 16px;
-            overflow: hidden;
-            border: 1.5px solid var(--form-border);
-        }
-
-        #admin-map-container {
-            width: 100%;
-            height: 350px;
-            background: #eef2f6;
-            overflow: hidden;
-            touch-action: none;
-            position: relative;
-            cursor: grab;
-            overscroll-behavior: contain;
-        }
-
-        #admin-map-container svg {
-            width: 100%;
-            height: 100%;
-            display: block;
-            transform-origin: 0 0;
-            shape-rendering: geometricPrecision;
-            text-rendering: geometricPrecision;
-            -webkit-font-smoothing: antialiased;
-        }
-
-        .spot-highlight circle {
-            fill: #22c55e !important;
-            stroke: #166534 !important;
-            stroke-width: 2px !important;
-        }
-
+        #admin-map-wrapper { margin-top: 10px; border-radius: 16px; overflow: hidden; border: 1.5px solid var(--form-border); }
+        #admin-map-container { width: 100%; height: 350px; background: #eef2f6; overflow: hidden; touch-action: none; position: relative; cursor: grab; }
+        #admin-map-container svg { width: 100%; height: 100%; display: block; transform-origin: 0 0; }
+        .spot-highlight circle { fill: #22c55e !important; stroke: #166534 !important; stroke-width: 2px !important; }
         .live-slot-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 16px;
-            background: white;
-            border: 1px solid #e2e8f0;
-            border-radius: 16px;
-            margin-bottom: 12px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.03);
+            display: flex; justify-content: space-between; align-items: center; padding: 16px;
+            background: white; border: 1px solid #e2e8f0; border-radius: 16px; margin-bottom: 12px;
         }
-
-        .live-slot-item strong {
-            font-size: 15px;
-            color: var(--text-black);
-            display: block;
-            margin-bottom: 4px;
-        }
-
-        .live-slot-item span {
-            font-size: 12px;
-            color: var(--text-sub);
-        }
-
-        .btn-del-mini {
-            background: #fff0f0;
-            color: #e11d48;
-            border: none;
-            padding: 10px 14px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: 700;
-            cursor: pointer;
-        }
-
-        .hidden {
-            display: none !important;
-        }
-
-        /* Admin Bus Grid */
-        .bus-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 10px;
-            margin-top: 10px;
-            max-height: 220px;
-            overflow-y: auto;
-        }
-
-        .grid-bus {
-            aspect-ratio: 1;
-            border-radius: 50%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-weight: 700;
-            font-size: 15px;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .grid-bus.grey {
-            background: #E2E8F0;
-            color: #64748B;
-            border: 1px solid #CBD5E1;
-        }
-
-        .grid-bus.green {
-            background: #bbf7d0;
-            color: #166534;
-            border: 1px solid #166534;
-        }
-
-        .grid-bus.yellow-active {
-            background: var(--bus-yellow);
-            color: #000;
-            border: 1px solid var(--bus-stroke);
-            transform: scale(1.1);
-            box-shadow: 0 4px 10px rgba(252, 176, 65, 0.4);
-        }
+        .live-slot-item strong { font-size: 15px; color: var(--text-black); display: block; margin-bottom: 4px; }
+        .live-slot-item span { font-size: 12px; color: var(--text-sub); }
+        .btn-del-mini { background: #fff0f0; color: #e11d48; border: none; padding: 10px 14px; border-radius: 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
+        .hidden { display: none !important; }
+        
+        .bus-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px; }
+        .grid-bus { aspect-ratio: 1; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-weight: 700; font-size: 15px; cursor: pointer; transition: all 0.2s; }
+        .grid-bus.grey { background: #E2E8F0; color: #64748B; border: 1px solid #CBD5E1; }
+        .grid-bus.yellow-active { background: var(--bus-yellow); color: #000; transform: scale(1.1); box-shadow: 0 4px 10px rgba(252, 176, 65, 0.4); }
     </style>
 </head>
-
 <body>
-    <div class="admin-layout">
+    <div id="offline-screen" class="offline-overlay" aria-hidden="true">
+        <div class="offline-card">
+            <div class="offline-icon-wrap">
+                <svg viewBox="0 0 24 24" width="44" height="44" fill="none" stroke="#815FD7" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="1" y1="1" x2="23" y2="23"></line><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"></path><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"></path><path d="M10.71 5.05A16 16 0 0 1 22.58 9"></path><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"></path><path d="M8.53 16.11a6 6 0 0 1 6.95 0"></path><line x1="12" y1="20" x2="12.01" y2="20"></line>
+                </svg>
+            </div>
+            <h3 class="offline-title">No Internet Connection</h3>
+            <p class="offline-desc">You are currently offline. Admin operations require an active network connection.</p>
+            <button id="btn-retry-network" class="offline-retry-btn">Try Again</button>
+        </div>
+    </div>
 
+    <div class="admin-layout">
         <!-- Auth Gate -->
         <div id="auth-screen">
-
             <a href="./index.html" class="btn-back-home">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="m15 18-6-6 6-6"/>
-                </svg>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
                 Back to Map
             </a>
-
             <h2>Go to Admin Dashboard</h2>
-
             <button id="btn-google-login" class="btn-google-auth">
                 <svg width="22" height="22" viewBox="0 0 24 24">
                     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -411,160 +205,104 @@
                 </svg>
                 <span>Sign in with Google</span>
             </button>
-
             <div id="auth-error-msg" style="color:#ef4444;font-size:13px;margin-top:20px;font-weight:700;" class="hidden"></div>
         </div>
 
-        <!-- Dashboard Content -->
         <div id="dashboard-content" class="hidden">
-
             <div class="admin-nav">
                 <img src="./logo.svg" alt="SeenMyBus" class="brand-logo">
                 <button id="btn-logout" class="btn-logout">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                        <polyline points="16 17 21 12 16 7"/>
-                        <line x1="21" y1="12" x2="9" y2="12"/>
-                    </svg>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                     <span>Log Out</span>
                 </button>
             </div>
 
             <div class="dashboard-grid">
-
                 <!-- 1. Priority Assign -->
                 <div class="card">
                     <div class="card-header">
-                        <svg class="ui-icon" viewBox="0 0 24 24">
-                            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 1 1 18 0z"/>
-                            <circle cx="12" cy="10" r="3"/>
-                        </svg>
+                        <svg class="ui-icon" viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 1 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
                         <h3>Assign Slot Priority</h3>
                     </div>
-
                     <div class="form-group">
                         <label>Select a Route</label>
-                        <select id="adm-route" class="form-control">
-                            <option value="1|Sonari">Route 1 - Sonari</option>
-                            <option value="2|Hudco">Route 2 - Hudco</option>
-                            <option value="3|Telco">Route 3 - Telco</option>
-                            <option value="4|New Baridih">Route 4 - New Baridih</option>
-                            <option value="6|Station">Route 6 - Station</option>
-                            <option value="9|Chepapul (Mango)">Route 9 - Chepapul (Mango)</option>
-                            <option value="10|Dimna Chowk">Route 10 - Dimna Chowk</option>
-                            <option value="11|Hostel">Route 11 - Hostel</option>
-                        </select>
+                        <select id="adm-route" class="form-control"></select>
                     </div>
-
                     <div class="form-group">
                         <label>Select Bus Number</label>
                         <div id="adm-bus-grid" class="bus-grid" style="grid-template-columns:repeat(6,1fr);max-height:unset;overflow:visible;"></div>
                         <input type="hidden" id="adm-busno" value="">
                     </div>
-
                     <div class="form-group">
                         <label>Select Parking Slot on Map</label>
                         <div id="spot-selector-btn" class="form-control" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
                             <span id="spot-text-val">Tap to select map slot...</span>
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M12 5v14M5 12h14"/>
-                            </svg>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A78BFA" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
                         </div>
                         <input type="hidden" id="adm-spot" value="">
-
-                        <!-- Interactive Admin Map -->
+                        
                         <div id="admin-map-wrapper" class="hidden">
-                            <div style="background:#F5F3FF;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#815FD7;border-bottom:1.5px solid var(--form-border);">
-                                Pinch to Zoom & Drag to Pan
-                            </div>
+                            <div style="background:#F5F3FF;padding:8px;text-align:center;font-size:11px;font-weight:700;color:#815FD7;border-bottom:1.5px solid var(--form-border);">Pinch to Zoom & Drag to Pan</div>
                             <div id="admin-map-container"></div>
                         </div>
                     </div>
-
                     <button id="btn-adm-assign" class="btn-action">
                         Override & Lock Slot
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="20 6 9 17 4 12"/>
-                        </svg>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                     </button>
                 </div>
 
                 <!-- 2. Broadcast -->
                 <div class="card">
                     <div class="card-header">
-                        <svg class="ui-icon" viewBox="0 0 24 24">
-                            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                        </svg>
+                        <svg class="ui-icon" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
                         <h3>Broadcast Notification</h3>
                     </div>
-
                     <div class="form-group">
                         <label>Notification Title</label>
                         <input type="text" id="adm-notif-title" class="form-control" placeholder="Campus Bus Alert">
                     </div>
-
                     <div class="form-group">
                         <label>Notification Message</label>
-                        <textarea id="adm-notif-msg" class="form-control" rows="4" placeholder="Sonari bus departing early from Slot 02 due to campus event..."></textarea>
+                        <textarea id="adm-notif-msg" class="form-control" rows="4" placeholder="Sonari bus departing early..."></textarea>
                     </div>
-
                     <button id="btn-adm-send-notif" class="btn-action">
                         Send Instant Push Alert
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                            <line x1="22" y1="2" x2="11" y2="13"/>
-                            <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-                        </svg>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                     </button>
                 </div>
 
                 <!-- 3. Live Fleet -->
                 <div class="card full-width">
                     <div class="card-header">
-                        <svg class="ui-icon" viewBox="0 0 24 24">
-                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                            <line x1="3" y1="9" x2="21" y2="9"/>
-                            <line x1="9" y1="21" x2="9" y2="9"/>
-                        </svg>
+                        <svg class="ui-icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
                         <h3>Active Fleet Control</h3>
                     </div>
                     <div id="adm-active-list">
-                        <p style="font-size:14px;font-weight:500;color:#A78BFA;text-align:center;padding:20px;">
-                            Fetching live fleet data...
-                        </p>
+                        <p style="font-size:14px;font-weight:500;color:#A78BFA;text-align:center;padding:20px;">Fetching live fleet data...</p>
                     </div>
                 </div>
 
                 <!-- 4. Purge -->
                 <div class="card full-width">
                     <div class="card-header">
-                        <svg class="ui-icon" viewBox="0 0 24 24">
-                            <polyline points="3 6 5 6 21 6"/>
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                        </svg>
+                        <svg class="ui-icon" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                         <h3>Shift Purge Engine</h3>
                     </div>
-                    <p style="font-size:13.5px;line-height:1.5;color:var(--text-sub);margin-bottom:20px;">
-                        Instantly clear all parking slots across campus and reset the map for the upcoming university departure shift.
-                    </p>
-                    <button id="btn-adm-purge-slots" class="btn-danger-action">
-                        Force Clear Entire Campus Map
-                    </button>
+                    <p style="font-size:13.5px;line-height:1.5;color:var(--text-sub);margin-bottom:20px;">Instantly clear all parking slots across campus and reset the map for the upcoming university departure shift.</p>
+                    <button id="btn-adm-purge-slots" class="btn-danger-action">Force Clear Entire Campus Map</button>
                 </div>
-
             </div>
         </div>
     </div>
 
-    <!-- Firebase SDK & Controller -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-app.js";
         import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-auth.js";
-        import { getDatabase, ref, onValue, set, update } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-database.js";
-        
-        //config import
-        import { ALL_ROUTES, ALL_BUSES, ALL_SPOTS } from "./config.js";
+        import { getDatabase, ref, onValue, set, update, get } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-database.js";
+        import * as Config from "./config.js";
 
+        // Firebase Setup
         const firebaseConfig = {
             apiKey: "AIzaSyCXejNb5wgmZ6KJ3Q4r4BhBqw9KPn7iX5I",
             authDomain: "seenmybus.firebaseapp.com",
@@ -575,14 +313,17 @@
             appId: "1:352466758419:web:b86ed30eff7223910688e6",
             measurementId: "G-7RF7CK39M9"
         };
-
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const db = getDatabase(app);
         const provider = new GoogleAuthProvider();
-
         const AUTHORIZED_ADMIN_EMAIL = "rahmansaif822@gmail.com";
 
+        // Dynamic State
+        let ALL_ROUTES = Config.DEFAULT_ROUTES || Config.ALL_ROUTES || [];
+        let ALL_BUSES = Config.DEFAULT_BUSES || Config.ALL_BUSES || Array.from({ length: 45 }, (_, i) => String(i + 1).padStart(2, '0'));
+        let ALL_SPOTS = Config.DEFAULT_SPOTS || Config.ALL_SPOTS || Array.from({ length: 41 }, (_, i) => `spot-${String(i + 1).padStart(2, '0')}`);
+        
         function getDeviceToken() {
             let token = localStorage.getItem('smb_device_token');
             if (!token) {
@@ -591,32 +332,108 @@
             }
             return token;
         }
-
         const currentDeviceToken = getDeviceToken();
         let adminActiveBuses = [];
+        let isAdminMapLoaded = false;
 
-        // Build Admin Bus Grid dynamically from config.js
-        const grid = document.getElementById('adm-bus-grid');
-        const hiddenInput = document.getElementById('adm-busno');
+        // UI Builders
+        function rebuildAdminUI() {
+            const admRouteSelect = document.getElementById('adm-route');
+            const admBusGrid = document.getElementById('adm-bus-grid');
+            const hiddenInput = document.getElementById('adm-busno');
 
-        ALL_BUSES.forEach(bNo => {
-            const btn = document.createElement('div');
-            btn.className = `grid-bus grey`;
-            btn.textContent = bNo;
-            btn.onclick = () => {
-                grid.querySelectorAll('.grid-bus').forEach(el => el.classList.remove('yellow-active'));
-                btn.classList.add('yellow-active');
-                hiddenInput.value = bNo;
-            };
-            grid.appendChild(btn);
+            if (admBusGrid) {
+                admBusGrid.innerHTML = '';
+                ALL_BUSES.forEach(bNo => {
+                    const btn = document.createElement('div');
+                    btn.className = `grid-bus grey`;
+                    btn.textContent = bNo;
+                    btn.onclick = () => {
+                        admBusGrid.querySelectorAll('.grid-bus').forEach(el => el.classList.remove('yellow-active'));
+                        btn.classList.add('yellow-active');
+                        hiddenInput.value = bNo;
+                    };
+                    admBusGrid.appendChild(btn);
+                });
+            }
+
+            if (admRouteSelect) {
+                const currentVal = admRouteSelect.value;
+                admRouteSelect.innerHTML = '';
+                ALL_ROUTES.forEach(r => {
+                    admRouteSelect.innerHTML += `<option value="${r.num}|${r.name}">Route ${r.num} - ${r.name}</option>`;
+                });
+                if (currentVal) admRouteSelect.value = currentVal;
+            }
+        }
+        rebuildAdminUI();
+
+        onValue(ref(db, 'appConfig'), (snapshot) => {
+            const configData = snapshot.val();
+            if (!configData) return;
+            if (Array.isArray(configData.routes) && configData.routes.length > 0) ALL_ROUTES = configData.routes;
+            if (configData.totalBuses) {
+                const busCount = parseInt(configData.totalBuses, 10);
+                if (!isNaN(busCount) && busCount > 0) ALL_BUSES = Array.from({ length: busCount }, (_, i) => String(i + 1).padStart(2, '0'));
+            }
+            if (configData.totalSpots) {
+                const spotCount = parseInt(configData.totalSpots, 10);
+                if (!isNaN(spotCount) && spotCount > 0) ALL_SPOTS = Array.from({ length: spotCount }, (_, i) => `spot-${String(i + 1).padStart(2, '0')}`);
+            }
+            rebuildAdminUI();
+            if (isAdminMapLoaded) renderAdminMapSpots();
         });
 
-        // Use ALL_SPOTS inside renderAdminMapSpots
+        // Network Sentinel
+        const offlineOverlay = document.getElementById('offline-screen');
+        const btnRetryNetwork = document.getElementById('btn-retry-network');
+        let offlineDebounceTimer = null;
+        let isCurrentlyOffline = false;
+
+        async function pingNetwork() {
+            if (!navigator.onLine) return false;
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 2500);
+                const res = await fetch(`/manifest.json?_probe=${Date.now()}`, { method: 'HEAD', cache: 'no-store', signal: controller.signal });
+                clearTimeout(timeoutId);
+                return res.ok;
+            } catch (e) { return false; }
+        }
+
+        window.addEventListener('offline', () => {
+            clearTimeout(offlineDebounceTimer);
+            offlineDebounceTimer = setTimeout(async () => {
+                const isConnected = await pingNetwork();
+                if (!isConnected) { isCurrentlyOffline = true; if (offlineOverlay) offlineOverlay.classList.add('active'); }
+            }, 3500);
+        });
+
+        window.addEventListener('online', async () => {
+            clearTimeout(offlineDebounceTimer);
+            const isConnected = await pingNetwork();
+            if (isConnected && isCurrentlyOffline) { isCurrentlyOffline = false; if (offlineOverlay) offlineOverlay.classList.remove('active'); }
+        });
+
+        if (btnRetryNetwork) {
+            btnRetryNetwork.onclick = async () => {
+                btnRetryNetwork.disabled = true;
+                btnRetryNetwork.textContent = 'Checking...';
+                if (await pingNetwork()) {
+                    btnRetryNetwork.textContent = 'Connected!';
+                    setTimeout(() => { isCurrentlyOffline = false; if (offlineOverlay) offlineOverlay.classList.remove('active'); btnRetryNetwork.disabled = false; btnRetryNetwork.textContent = 'Try Again'; }, 600);
+                } else {
+                    btnRetryNetwork.textContent = 'Still Offline';
+                    setTimeout(() => { btnRetryNetwork.disabled = false; btnRetryNetwork.textContent = 'Try Again'; }, 1500);
+                }
+            };
+        }
+
+        // Map Renderer
         function renderAdminMapSpots() {
             ALL_SPOTS.forEach(spotId => {
                 const g = document.getElementById(spotId);
                 if (!g) return;
-
                 g.querySelectorAll('text.spot-text').forEach(t => t.remove());
                 g.className.baseVal = '';
                 g.style.pointerEvents = 'all';
@@ -624,23 +441,17 @@
                 g.style.opacity = '1';
 
                 const busInfo = adminActiveBuses.find(b => b.spotId === spotId);
-
                 if (busInfo && busInfo.busNos.length > 0) {
                     g.classList.add('spot-yellow');
                     const circle = g.querySelector('circle');
                     if (circle) {
-                        const cx = circle.getAttribute('cx');
-                        const cy = circle.getAttribute('cy');
+                        const cx = circle.getAttribute('cx'), cy = circle.getAttribute('cy');
                         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-                        text.setAttribute('x', cx);
-                        text.setAttribute('y', cy);
-                        text.setAttribute('text-anchor', 'middle');
-                        text.setAttribute('dy', '0.35em');
+                        text.setAttribute('x', cx); text.setAttribute('y', cy);
+                        text.setAttribute('text-anchor', 'middle'); text.setAttribute('dy', '0.35em');
                         text.setAttribute('class', 'spot-text text-black');
-                        
                         const textContent = busInfo.busNos.join(',');
                         if (textContent.length > 3) text.style.fontSize = '3.8px';
-                        
                         text.textContent = textContent;
                         g.appendChild(text);
                     }
@@ -652,43 +463,26 @@
                     e.stopPropagation();
                     document.getElementById('adm-spot').value = spotId;
                     document.getElementById('spot-text-val').innerHTML = `<span style="color:#815FD7;font-weight:800;">${spotId.toUpperCase().replace('-',' ')} Selected</span>`;
-                    
-                    allSpots.forEach(s => {
-                        const el = document.getElementById(s);
-                        if (el) el.classList.remove('spot-highlight');
-                    });
-                    
+                    ALL_SPOTS.forEach(s => { const el = document.getElementById(s); if (el) el.classList.remove('spot-highlight'); });
                     g.classList.add('spot-highlight');
-                    setTimeout(() => {
-                        document.getElementById('admin-map-wrapper').classList.add('hidden');
-                    }, 300);
+                    setTimeout(() => { document.getElementById('admin-map-wrapper').classList.add('hidden'); }, 300);
                 };
             });
         }
-
-        let isAdminMapLoaded = false;
 
         function initAdminMapSelector() {
             document.getElementById('spot-selector-btn').onclick = () => {
                 const wrapper = document.getElementById('admin-map-wrapper');
                 wrapper.classList.toggle('hidden');
-
                 if (isAdminMapLoaded) return;
-
+                
                 const mapContainer = document.getElementById('admin-map-container');
                 mapContainer.innerHTML = '<p style="text-align:center;color:#815FD7;padding:40px 20px;font-size:14px;font-weight:600;">Loading Interactive Map...</p>';
-
                 fetch('./ArkaJainUniversityBusMap.xml?v=4')
-                    .then(res => {
-                        if (!res.ok) throw new Error('Map load failure');
-                        return res.text();
-                    })
+                    .then(res => res.text())
                     .then(svgText => {
                         mapContainer.innerHTML = svgText;
                         const adminMapElement = mapContainer.querySelector('svg');
-                        
-                        if (!adminMapElement) throw new Error('Admin map SVG not found');
-                        
                         adminMapElement.id = 'campus-map';
                         adminMapElement.setAttribute('preserveAspectRatio', 'xMidYMid slice');
                         adminMapElement.style.shapeRendering = 'geometricPrecision';
@@ -696,184 +490,36 @@
                         const rootGroup = document.getElementById('campus-map-root');
                         if (rootGroup) rootGroup.removeAttribute('clip-path');
 
-                        let admScale = 1;
-                        let admPointX = 0;
-                        let admPointY = 0;
-                        let admStartX = 0;
-                        let admStartY = 0;
-                        let admIsPanning = false;
-                        let admInitialPinchDist = null;
-                        let admInitialScale = 1;
-                        let admTransformFramePending = false;
-                        let admPanPointerMoved = false;
-
-                        const ADMIN_DEFAULT_ZOOM = 1.95;
-                        const ADMIN_DEFAULT_CENTER_X = 735;
-                        const ADMIN_DEFAULT_CENTER_Y = 500;
-
-                        function applyAdmBoundaries() {
-                            const contW = mapContainer.clientWidth;
-                            const contH = mapContainer.clientHeight;
-                            const scaledW = contW * admScale;
-                            const scaledH = contH * admScale;
-
-                            if (scaledW <= contW) {
-                                admPointX = (contW - scaledW) / 2;
-                            } else {
-                                admPointX = Math.min(0, Math.max(admPointX, contW - scaledW));
-                            }
-                            if (scaledH <= contH) {
-                                admPointY = (contH - scaledH) / 2;
-                            } else {
-                                admPointY = Math.min(0, Math.max(admPointY, contH - scaledH));
-                            }
-                        }
-
-                        function writeAdmTransform() {
-                            admTransformFramePending = false;
-                            applyAdmBoundaries();
+                        let admScale = 1.95, admPointX = 0, admPointY = 0;
+                        function setAdminDefaultViewport() {
+                            const baseW = adminMapElement.viewBox.baseVal.width || 1265;
+                            const baseH = adminMapElement.viewBox.baseVal.height || 1335;
+                            const fitScale = Math.max(mapContainer.clientWidth / baseW, mapContainer.clientHeight / baseH);
+                            const offsetX = ((baseW * fitScale) - mapContainer.clientWidth) / 2;
+                            const offsetY = ((baseH * fitScale) - mapContainer.clientHeight) / 2;
+                            admPointX = (mapContainer.clientWidth / 2) - (((735 * fitScale) - offsetX) * admScale);
+                            admPointY = (mapContainer.clientHeight / 2) - (((500 * fitScale) - offsetY) * admScale);
                             adminMapElement.style.transform = `translate(${admPointX}px, ${admPointY}px) scale(${admScale})`;
                         }
 
-                        function setAdmTransform() {
-                            if (admTransformFramePending) return;
-                            admTransformFramePending = true;
-                            requestAnimationFrame(writeAdmTransform);
-                        }
-
-                        function setAdminDefaultViewport() {
-                            const viewBox = adminMapElement.viewBox.baseVal;
-                            const baseW = viewBox.width || 1265;
-                            const baseH = viewBox.height || 1335;
-                            const contW = mapContainer.clientWidth;
-                            const contH = mapContainer.clientHeight;
-
-                            const fitScale = Math.max(contW / baseW, contH / baseH);
-                            const renderedW = baseW * fitScale;
-                            const renderedH = baseH * fitScale;
-
-                            const offsetX = (renderedW - contW) / 2;
-                            const offsetY = (renderedH - contH) / 2;
-
-                            const targetPixelX = (ADMIN_DEFAULT_CENTER_X * fitScale) - offsetX;
-                            const targetPixelY = (ADMIN_DEFAULT_CENTER_Y * fitScale) - offsetY;
-
-                            admScale = ADMIN_DEFAULT_ZOOM;
-                            admPointX = (contW / 2) - (targetPixelX * admScale);
-                            admPointY = (contH / 2) - (targetPixelY * admScale);
-                            setAdmTransform();
-                        }
-
-                        function zoomAdminMapAt(clientX, clientY, zoomFactor) {
-                            const rect = mapContainer.getBoundingClientRect();
-                            const localX = clientX - rect.left;
-                            const localY = clientY - rect.top;
-                            const oldScale = admScale;
-                            const newScale = Math.min(5, Math.max(1, oldScale * zoomFactor));
-
-                            if (newScale === oldScale) return;
-
-                            const mapX = (localX - admPointX) / oldScale;
-                            const mapY = (localY - admPointY) / oldScale;
-                            admScale = newScale;
-                            admPointX = localX - (mapX * admScale);
-                            admPointY = localY - (mapY * admScale);
-                            setAdmTransform();
-                        }
-
-                        mapContainer.addEventListener('mousedown', e => {
-                            if (e.button !== 0) return;
-                            admIsPanning = true;
-                            admPanPointerMoved = false;
-                            admStartX = e.clientX - admPointX;
-                            admStartY = e.clientY - admPointY;
-                            mapContainer.style.cursor = 'grabbing';
-                        });
-
-                        window.addEventListener('mousemove', e => {
-                            if (!admIsPanning) return;
-                            const nextX = e.clientX - admStartX;
-                            const nextY = e.clientY - admStartY;
-                            if (Math.abs(nextX - admPointX) > 2 || Math.abs(nextY - admPointY) > 2) {
-                                admPanPointerMoved = true;
-                            }
-                            admPointX = nextX;
-                            admPointY = nextY;
-                            setAdmTransform();
-                        });
-
-                        window.addEventListener('mouseup', () => { admIsPanning = false; mapContainer.style.cursor = 'grab'; });
-                        window.addEventListener('mouseleave', () => { admIsPanning = false; mapContainer.style.cursor = 'grab'; });
-
-                        mapContainer.addEventListener('wheel', e => {
-                            e.preventDefault();
-                            const factor = e.deltaY < 0 ? 1.12 : (1 / 1.12);
-                            zoomAdminMapAt(e.clientX, e.clientY, factor);
-                        }, { passive: false });
-
-                        mapContainer.addEventListener('touchstart', e => {
-                            if (e.touches.length === 1) {
-                                admIsPanning = true;
-                                admPanPointerMoved = false;
-                                admStartX = e.touches[0].clientX - admPointX;
-                                admStartY = e.touches[0].clientY - admPointY;
-                            } else if (e.touches.length === 2) {
-                                admIsPanning = false;
-                                admInitialPinchDist = Math.hypot(
-                                    e.touches[0].clientX - e.touches[1].clientX,
-                                    e.touches[0].clientY - e.touches[1].clientY
-                                );
-                                admInitialScale = admScale;
-                            }
-                        }, { passive: true });
-
-                        mapContainer.addEventListener('touchmove', e => {
-                            if (e.touches.length === 1 && admIsPanning) {
-                                e.preventDefault();
-                                admPointX = e.touches[0].clientX - admStartX;
-                                admPointY = e.touches[0].clientY - admStartY;
-                                admPanPointerMoved = true;
-                                setAdmTransform();
-                            } else if (e.touches.length === 2 && admInitialPinchDist) {
-                                e.preventDefault();
-                                const currentDist = Math.hypot(
-                                    e.touches[0].clientX - e.touches[1].clientX,
-                                    e.touches[0].clientY - e.touches[1].clientY
-                                );
-                                const nextScale = Math.min(5, Math.max(1, admInitialScale * (currentDist / admInitialPinchDist)));
-                                const rect = mapContainer.getBoundingClientRect();
-                                const centerX = ((e.touches[0].clientX + e.touches[1].clientX) / 2) - rect.left;
-                                const centerY = ((e.touches[0].clientY + e.touches[1].clientY) / 2) - rect.top;
-
-                                const mapX = (centerX - admPointX) / admScale;
-                                const mapY = (centerY - admPointY) / admScale;
-                                admScale = nextScale;
-                                admPointX = centerX - (mapX * admScale);
-                                admPointY = centerY - (mapY * admScale);
-                                setAdmTransform();
-                            }
-                        }, { passive: false });
-
-                        mapContainer.addEventListener('touchend', e => {
-                            if (e.touches.length === 0) {
-                                admIsPanning = false;
-                                admInitialPinchDist = null;
-                            }
-                        }, { passive: true });
+                        let admIsPanning = false, admStartX = 0, admStartY = 0;
+                        mapContainer.addEventListener('mousedown', e => { admIsPanning = true; admStartX = e.clientX - admPointX; admStartY = e.clientY - admPointY; });
+                        window.addEventListener('mousemove', e => { if (!admIsPanning) return; admPointX = e.clientX - admStartX; admPointY = e.clientY - admStartY; adminMapElement.style.transform = `translate(${admPointX}px, ${admPointY}px) scale(${admScale})`; });
+                        window.addEventListener('mouseup', () => admIsPanning = false);
+                        
+                        mapContainer.addEventListener('touchstart', e => { if(e.touches.length===1) { admIsPanning = true; admStartX = e.touches[0].clientX - admPointX; admStartY = e.touches[0].clientY - admPointY; } }, {passive:true});
+                        mapContainer.addEventListener('touchmove', e => { if(e.touches.length===1 && admIsPanning) { admPointX = e.touches[0].clientX - admStartX; admPointY = e.touches[0].clientY - admStartY; adminMapElement.style.transform = `translate(${admPointX}px, ${admPointY}px) scale(${admScale})`; e.preventDefault(); } }, {passive:false});
+                        mapContainer.addEventListener('touchend', () => admIsPanning = false, {passive:true});
 
                         isAdminMapLoaded = true;
                         renderAdminMapSpots();
                         requestAnimationFrame(setAdminDefaultViewport);
-                    })
-                    .catch(err => {
-                        console.error('Admin map load error:', err);
-                        mapContainer.innerHTML = '<p style="text-align:center;color:#ef4444;padding:40px 20px;font-size:13px;font-weight:600;">Unable to load interactive map.</p>';
                     });
             };
         }
-
         initAdminMapSelector();
 
+        // Auth Logic
         const authScreen = document.getElementById('auth-screen');
         const dashboardContent = document.getElementById('dashboard-content');
         const authErrorMsg = document.getElementById('auth-error-msg');
@@ -897,13 +543,8 @@
         });
 
         document.getElementById('btn-google-login').onclick = async () => {
-            try {
-                authErrorMsg.classList.add('hidden');
-                await signInWithPopup(auth, provider);
-            } catch (e) {
-                authErrorMsg.textContent = e.message;
-                authErrorMsg.classList.remove('hidden');
-            }
+            try { authErrorMsg.classList.add('hidden'); await signInWithPopup(auth, provider); } 
+            catch (e) { authErrorMsg.textContent = e.message; authErrorMsg.classList.remove('hidden'); }
         };
 
         document.getElementById('btn-logout').onclick = async () => {
@@ -912,6 +553,7 @@
             window.location.href = './index.html';
         };
 
+        // Actions
         document.getElementById('btn-adm-assign').onclick = async () => {
             const routeRaw = document.getElementById('adm-route').value.split('|');
             const busNo = document.getElementById('adm-busno').value.trim();
@@ -920,20 +562,24 @@
             if (!busNo) return alert("Please select a bus number from the grid.");
             if (!spotId) return alert("Please tap the map below to select a slot first.");
 
-            const existing = adminActiveBuses.find(b => b.spotId === spotId);
-
-            if (existing && existing.routeNum !== routeRaw[0]) {
-                if (!confirm(`Warning: Slot is occupied by Route ${existing.routeNum}. Force overwrite?`)) {
-                    return;
-                }
-            }
-
             const activeBusesUpdates = {};
+            
+            // Remove bus from any existing spots
+            adminActiveBuses.forEach(ab => {
+                if (ab.spotId !== spotId && ab.busNos.includes(busNo)) {
+                    let bList = ab.busNos.filter(b => b !== busNo);
+                    if (bList.length === 0) activeBusesUpdates[ab.spotId] = null;
+                    else activeBusesUpdates[`${ab.spotId}/busNos`] = bList;
+                }
+            });
+
+            // Assign to new spot (Multi-route array schema compatibility)
             activeBusesUpdates[spotId] = {
                 busNo: busNo,
                 busNos: [busNo],
                 routeNum: routeRaw[0],
                 name: routeRaw[1],
+                routes: [{ num: routeRaw[0], name: routeRaw[1] }],
                 users: 999,
                 votersLedger: { 'admin_locked': true },
                 verifiedByAdmin: true,
@@ -943,15 +589,23 @@
 
             try {
                 await update(ref(db, 'activeBuses'), activeBusesUpdates);
-                alert(`Done! Bus ${busNo} locked to ${spotId.replace('-',' ')}.`);
+                
+                // Clear from unassigned
+                const unSnap = await get(ref(db, 'unassignedBuses'));
+                const unData = unSnap.val() || {};
+                let unUpdates = {};
+                Object.keys(unData).filter(k => k.startsWith('spot-')).forEach(k => {
+                    if (unData[k].busNo === busNo) unUpdates[k] = null;
+                });
+                if (Object.keys(unUpdates).length > 0) await update(ref(db, 'unassignedBuses'), unUpdates);
 
+                alert(`Done! Bus ${busNo} locked to ${spotId.replace('-',' ')}.`);
                 document.getElementById('adm-busno').value = '';
                 document.querySelectorAll('.grid-bus').forEach(el => el.classList.remove('yellow-active'));
                 document.getElementById('adm-spot').value = '';
                 document.getElementById('spot-text-val').textContent = 'Tap to select map slot...';
                 document.querySelectorAll('.spot-highlight').forEach(el => el.classList.remove('spot-highlight'));
             } catch (e) {
-                console.error(e);
                 alert("Override failed due to permission or connection issues.");
             }
         };
@@ -959,41 +613,30 @@
         document.getElementById('btn-adm-send-notif').onclick = async () => {
             const title = document.getElementById('adm-notif-title').value.trim() || "Campus Bus Alert";
             const message = document.getElementById('adm-notif-msg').value.trim();
-
             if (!message) return alert("Please type a notification message.");
 
-            // NEW: Ping Cloudflare Worker for Admin Broadcast
             fetch('https://seenmybus-notifier.rahmansaif822.workers.dev/broadcast', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    title: title,
-                    message: message,
-                    routeName: "Admin Alert",
-                    sender: "ADMIN_" + currentDeviceToken
-                })
+                body: JSON.stringify({ title, message, routeName: "Admin Alert", sender: "ADMIN_" + currentDeviceToken })
             }).catch(e => console.error("Admin Worker ping failed", e));
 
             const notifUpdates = {};
-            notifUpdates[Date.now().toString()] = {
-                title,
-                message,
-                createdAt: Date.now()
-            };
+            notifUpdates[Date.now().toString()] = { title, message, createdAt: Date.now() };
 
             try {
                 await update(ref(db, 'broadcastNotifications'), notifUpdates);
                 alert("Push notification broadcasted to all users!");
                 document.getElementById('adm-notif-msg').value = '';
-            } catch (e) {
-                console.error(e);
-            }
+            } catch (e) { console.error(e); }
         };
 
         function loadLiveFleet() {
             onValue(ref(db, 'activeBuses'), snap => {
                 const data = snap.val() || {};
-                adminActiveBuses = Object.keys(data).map(spotId => {
+                const validSpots = Object.keys(data).filter(k => k.startsWith('spot-'));
+
+                adminActiveBuses = validSpots.map(spotId => {
                     const item = data[spotId];
                     const buses = item.busNos ? item.busNos : (item.busNo ? [item.busNo] : []);
                     return { spotId, ...item, busNos: buses };
@@ -1003,22 +646,24 @@
 
                 const listEl = document.getElementById('adm-active-list');
                 listEl.innerHTML = '';
-                const keys = Object.keys(data);
-
-                if (keys.length === 0) {
+                if (validSpots.length === 0) {
                     listEl.innerHTML = `<p style="font-size:14px;font-weight:500;color:#A78BFA;text-align:center;padding:20px;">No buses currently parked on map.</p>`;
                     return;
                 }
 
-                keys.forEach(spotId => {
+                validSpots.forEach(spotId => {
                     const item = data[spotId];
                     const buses = item.busNos ? item.busNos.join(', ') : item.busNo;
+                    const routeLabel = (item.routes && Array.isArray(item.routes) && item.routes.length > 0)
+                        ? item.routes.map(r => `Route ${r.num} (${r.name})`).join(' + ')
+                        : `Route ${item.routeNum} - ${item.name}`;
+
                     const div = document.createElement('div');
                     div.className = 'live-slot-item';
                     div.innerHTML = `
                         <div>
                             <strong>${spotId.toUpperCase().replace('-',' ')} Bus ${buses}</strong>
-                            <span>Route ${item.routeNum} (${item.name})</span>
+                            <span>${routeLabel}</span>
                         </div>
                         <button class="btn-del-mini" onclick="window.removeSpot('${spotId}')">Remove from Map</button>
                     `;
@@ -1038,8 +683,8 @@
         document.getElementById('btn-adm-purge-slots').onclick = async () => {
             if (confirm("Are you entirely sure you want to clear ALL buses from the campus map?")) {
                 try {
-                    await set(ref(db, 'activeBuses'), null);
-                    await set(ref(db, 'unassignedBuses'), null);
+                    await set(ref(db, 'activeBuses'), { _init: true });
+                    await set(ref(db, 'unassignedBuses'), { _init: true });
                     alert("Campus map completely purged!");
                 } catch (e) {
                     console.error(e);

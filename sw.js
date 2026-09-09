@@ -1,7 +1,7 @@
-// BUMPED CACHE TO v18 FOR SINGLE-NOTIFICATION FIX
-const CACHE_NAME = 'seenmybus-v19';
+// BUMPED CACHE TO v20 FOR STREAM CLONE & OFFLINE SENTINEL FIX
+const CACHE_NAME = 'seenmybus-v20';
 
-// 1. PURE WEB PUSH ENGINE (No Firebase SDK overlap causing duplicates)
+// 1. PURE WEB PUSH ENGINE
 self.addEventListener('push', (event) => {
     let payload = {};
     try {
@@ -41,6 +41,8 @@ const STATIC_ASSETS = [
     './logo.svg',
     './badge-icon.png',
     './app-icon.png',
+    './icon-192.png',
+    './icon-512.png',
     './admin-dashboard.html',
     './manifest.json',
     './onboarding-1.jpg',
@@ -52,12 +54,14 @@ const STATIC_ASSETS = [
     './privacy-policy.html'
 ];
 
+// 2. Install & Cache App Shell
 self.addEventListener('install', (e) => {
     e.waitUntil(
         caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS)).then(() => self.skipWaiting())
     );
 });
 
+// 3. Clean Outdated Caches
 self.addEventListener('activate', (e) => {
     e.waitUntil(
         caches.keys().then((keys) => {
@@ -66,27 +70,53 @@ self.addEventListener('activate', (e) => {
     );
 });
 
-// PURE STALE-WHILE-REVALIDATE STRATEGY 
+// 4. Skip Waiting Listener (Triggered by app.js updatefound)
+self.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'SKIP_WAITING') {
+        self.skipWaiting();
+    }
+});
+
+// 5. STALE-WHILE-REVALIDATE FETCH HANDLER (Synchronous Clone Fix)
 self.addEventListener('fetch', (e) => {
     if (e.request.method !== 'GET') return;
     const url = new URL(e.request.url);
 
+    // Bypass browser extensions, Firebase WebSockets/APIs, Cloudflare Worker, and network sentinels
     if (url.protocol.startsWith('chrome-extension')) return;
-    if (url.hostname.includes('firebasedatabase.app') || url.hostname.includes('workers.dev')) return;
+    if (
+        url.hostname.includes('firebasedatabase.app') || 
+        url.hostname.includes('firebaseio.com') || 
+        url.hostname.includes('workers.dev') ||
+        url.searchParams.has('_probe')
+    ) {
+        return;
+    }
 
     e.respondWith(
         caches.match(e.request).then((cachedResponse) => {
             const fetchPromise = fetch(e.request).then((networkResponse) => {
                 if (networkResponse && networkResponse.status === 200 && (networkResponse.type === 'basic' || networkResponse.type === 'cors')) {
-                    caches.open(CACHE_NAME).then((cache) => cache.put(e.request, networkResponse.clone()));
+                    // SYNCHRONOUS CLONE: Executed immediately before the response stream can be consumed
+                    const responseClone = networkResponse.clone();
+                    caches.open(CACHE_NAME).then((cache) => {
+                        cache.put(e.request, responseClone);
+                    });
                 }
                 return networkResponse;
-            }).catch(() => {}); 
+            }).catch(() => {
+                // If offline and navigating to a page, fallback to cached index.html
+                if (e.request.mode === 'navigate') {
+                    return caches.match('./index.html');
+                }
+            });
+
             return cachedResponse || fetchPromise;
         })
     );
 });
 
+// 6. Notification Click Handler
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
     const targetUrl = (event.notification.data && event.notification.data.url) ? event.notification.data.url : './index.html';

@@ -9,6 +9,8 @@
     touch-action: none;
     cursor: grab;
     background-color: var(--bg-gray);
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 #map-container.map-is-moving {
@@ -33,6 +35,10 @@
     height: 100%;
     display: block;
     transform-origin: 0 0;
+    touch-action: none !important;
+    -webkit-user-select: none;
+    user-select: none;
+    pointer-events: auto;
 }
 
 #labels-macro {
