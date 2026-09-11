@@ -519,7 +519,21 @@ if (boardEditFab) {
     boardEditFab.onclick = async () => {
         if (window.isTourActive) {
             boardEditFab.classList.remove('tour-target-html');
-            setTimeout(() => window.nextTourStep(), 400);
+            if (isBoardEditMode) {
+                boardPendingEdits = {};
+                isBoardEditMode = false;
+                boardEditFab.classList.remove('saving');
+                const iconE = document.getElementById('fab-icon-edit');
+                const iconS = document.getElementById('fab-icon-save');
+                if (iconE) iconE.classList.remove('hidden');
+                if (iconS) iconS.classList.add('hidden');
+                boardEditFab.disabled = false;
+                renderDigitalBoard();
+                setTimeout(() => window.nextTourStep(), 400);
+                return; // <-- CRITICAL: Stops here so live Firebase is never touched!
+            } else {
+                setTimeout(() => window.nextTourStep(), 400);
+            }
         }
 
         if (isBoardEditMode) {
@@ -2309,9 +2323,23 @@ window.finishTour = function() {
     window.isTourActive = false;
     tourAbortController.abort();
     
+    // --- FORCE UI & STATE RESET (Prevents ghost pushes) ---
+    isBoardEditMode = false;
+    boardPendingEdits = {};
+    if (boardEditFab) {
+        boardEditFab.classList.remove('saving', 'tour-target-html');
+        const iconE = document.getElementById('fab-icon-edit');
+        const iconS = document.getElementById('fab-icon-save');
+        if (iconE) iconE.classList.remove('hidden');
+        if (iconS) iconS.classList.add('hidden');
+        boardEditFab.disabled = false;
+    }
+    pendingUpdate = { route: null, busNo: null, spotId: null, isReplacement: false };
+    
     lastActiveDataSignature = null;
     lastUnassignedDataSignature = null;
     activeBuses = []; unassignedBuses = []; busLocationTracker = {}; routeLocationTracker = {};
+    
     window.forceTourRefresh();
     switchDisplayMode('MAP');
     
@@ -2320,6 +2348,7 @@ window.finishTour = function() {
     const modal = document.getElementById('modal-overlay');
     if (modal) modal.classList.add('hidden');
     if (typeof hideValidationCard === 'function') hideValidationCard();
+    if (typeof hideUnassignedTooltip === 'function') hideUnassignedTooltip();
     if (typeof window.triggerPostTourConsents === 'function') window.triggerPostTourConsents();
 };
 
