@@ -4,47 +4,15 @@ import { getDatabase, ref, onValue, set, update, get, goOnline } from "https://w
 import * as Config from "./config.js";
 
 // =============================================================================
-// 1. SPLASH SCREEN & SYSTEM ESSENTIALS
+// 1. GLOBAL STATE & MAP ENGINE DECLARATIONS (HOISTED FOR SCOPE SAFETY)
 // =============================================================================
-export function hideSplashScreen() {
-    const splash = document.getElementById('splash-screen');
-    if (splash && !splash.classList.contains('fade-out')) {
-        splash.classList.add('fade-out');
-        setTimeout(() => { if (splash.parentNode) splash.remove(); }, 500);
-    }
-}
-window.hideSplashScreen = hideSplashScreen;
-setTimeout(hideSplashScreen, 1500);
-
-export const CAMPUS_SHIFT_TIMINGS = [
-    "13:15", // Shift 1 Cutoff: 1:15 PM
-    "16:15", // Shift 2 Cutoff: 4:15 PM
-    "18:00"  // Shift 3 Cutoff: 6:00 PM
-];
-
+export const CAMPUS_SHIFT_TIMINGS = ["13:15", "16:15", "18:00"];
 export const MAX_PARKING_STALE_MINUTES = 90;
-
-const firebaseConfig = {
-    apiKey: "AIzaSyCXejNb5wgmZ6KJ3Q4r4BhBqw9KPn7iX5I",
-    authDomain: "seenmybus.firebaseapp.com",
-    databaseURL: "https://seenmybus-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "seenmybus",
-    storageBucket: "seenmybus.firebasestorage.app",
-    messagingSenderId: "352466758419",
-    appId: "1:352466758419:web:b86ed30eff7223910688e6",
-    measurementId: "G-7RF7CK39M9"
-};
-const app = initializeApp(firebaseConfig);
-const db = getDatabase(app);
-const messaging = getMessaging(app);
 
 let ALL_ROUTES = Config.DEFAULT_ROUTES || Config.ALL_ROUTES || [];
 let ALL_BUSES = Config.DEFAULT_BUSES || Config.ALL_BUSES || Array.from({ length: 45 }, (_, i) => String(i + 1).padStart(2, '0'));
 let ALL_SPOTS = Config.DEFAULT_SPOTS || Config.ALL_SPOTS || Array.from({ length: 41 }, (_, i) => `spot-${String(i + 1).padStart(2, '0')}`);
 
-// =============================================================================
-// 2. GLOBAL STATE DECLARATIONS
-// =============================================================================
 let mapElement = null;
 let activeBuses = [];
 let unassignedBuses = [];
@@ -88,39 +56,34 @@ const totalTourSteps = 12;
 window.isTourActive = false;
 let tourAbortController = new AbortController();
 
-// Map Engine Constants & Interaction State
+// --- MAP ENGINE CORE VARIABLES ---
 let scale = 1, pointX = 0, pointY = 0, startX = 0, startY = 0;
 let isPanning = false, initialPinchDist = null, initialScale = 1;
 let panPointerMoved = false, transformFramePending = false;
-const DEFAULT_MAP_ZOOM = 1.95, DEFAULT_MAP_CENTER_X = 735, DEFAULT_MAP_CENTER_Y = 750;
+const DEFAULT_MAP_ZOOM = 1.95;
+const DEFAULT_MAP_CENTER_X = 735;
+const DEFAULT_MAP_CENTER_Y = 750;
 
-// =============================================================================
-// 3. DOM ELEMENT DECLARATIONS
-// =============================================================================
+// DOM Elements
 const mapContainer = document.getElementById('map-container');
 const toggleMapBtn = document.getElementById('tab-mode-map');
 const toggleBoardBtn = document.getElementById('tab-mode-board');
 const digitalBoardContainer = document.getElementById('digital-board-container');
 const draggableSheet = document.getElementById('draggable-sheet');
 const boardGridEl = document.getElementById('board-grid');
-
 const boardEditFab = document.getElementById('board-edit-fab');
 const fabIconEdit = document.getElementById('fab-icon-edit');
 const fabIconSave = document.getElementById('fab-icon-save');
-
 const fixedFooter = document.getElementById('fixed-footer');
 const selFooter = document.getElementById('selection-footer');
 const topBar = document.querySelector('.top-bar');
-
 const sidePanel = document.getElementById('side-panel');
 const sideOverlay = document.getElementById('side-panel-overlay');
 const btnHam = document.getElementById('btn-hamburger');
 const closePanel = document.getElementById('btn-close-panel');
-
 const devNoteToggle = document.getElementById('dev-note-toggle');
 const devNoteCard = document.getElementById('dev-note-card');
 const devNoteDot = document.getElementById('dev-note-dot');
-
 const hrEl = document.getElementById('board-hr');
 const minEl = document.getElementById('board-min');
 const secEl = document.getElementById('board-sec');
@@ -129,12 +92,10 @@ const dateEl = document.getElementById('board-date');
 const dayEl = document.getElementById('board-day');
 const boardNextShiftEl = document.getElementById('board-next-shift');
 const boardCountdownEl = document.getElementById('board-countdown');
-
 const unassignedTooltipEl = document.getElementById('unassigned-tooltip');
 const tooltipBusNumberEl = document.getElementById('tooltip-bus-number');
 const btnCloseTooltip = document.getElementById('btn-close-tooltip');
 const btnTooltipAssign = document.getElementById('btn-tooltip-assign');
-
 const valBubble = document.getElementById('bus-validation-bubble');
 const valFab = document.getElementById('val-fab');
 const valCard = document.getElementById('val-card');
@@ -142,10 +103,8 @@ const valBusDetails = document.getElementById('val-bus-details');
 const btnValYes = document.getElementById('btn-val-yes');
 const btnValNo = document.getElementById('btn-val-no');
 const btnValCollapse = document.getElementById('val-btn-collapse');
-
 const offlineOverlay = document.getElementById('offline-screen');
 const btnRetryNetwork = document.getElementById('btn-retry-network');
-
 const modal = document.getElementById('modal-overlay');
 const tabPark = document.getElementById('tab-park');
 const tabDepart = document.getElementById('tab-depart');
@@ -158,14 +117,38 @@ const grid = document.getElementById('bus-grid');
 const departList = document.getElementById('depart-bus-list');
 const rSelect = document.getElementById('route-select');
 const searchInput = document.getElementById('search-input');
-
 const dragHandle = document.getElementById('drag-handle-area');
 const contentWrapper = document.getElementById('sheet-content-wrapper');
 const busListScroll = document.getElementById('bus-list');
 
+
 // =============================================================================
-// 4. SERVICE WORKER & SYSTEM AUTH
+// 2. INITIALIZATION & FIREBASE SETUP
 // =============================================================================
+export function hideSplashScreen() {
+    const splash = document.getElementById('splash-screen');
+    if (splash && !splash.classList.contains('fade-out')) {
+        splash.classList.add('fade-out');
+        setTimeout(() => { if (splash.parentNode) splash.remove(); }, 500);
+    }
+}
+window.hideSplashScreen = hideSplashScreen;
+setTimeout(hideSplashScreen, 1500);
+
+const firebaseConfig = {
+    apiKey: "AIzaSyCXejNb5wgmZ6KJ3Q4r4BhBqw9KPn7iX5I",
+    authDomain: "seenmybus.firebaseapp.com",
+    databaseURL: "https://seenmybus-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "seenmybus",
+    storageBucket: "seenmybus.firebasestorage.app",
+    messagingSenderId: "352466758419",
+    appId: "1:352466758419:web:b86ed30eff7223910688e6",
+    measurementId: "G-7RF7CK39M9"
+};
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const messaging = getMessaging(app);
+
 if ('serviceWorker' in navigator) {
     let refreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -397,7 +380,7 @@ onValue(ref(db, 'appConfig'), (snapshot) => {
 });
 
 // =============================================================================
-// 5. DIGITAL BOARD & FLIP CLOCK
+// 3. DIGITAL BOARD & FLIP CLOCK
 // =============================================================================
 function flipUnit(idPrefix, newVal) {
     const topCard = document.getElementById(`${idPrefix}-top`);
@@ -523,7 +506,7 @@ if (toggleBoardBtn) toggleBoardBtn.onclick = () => switchDisplayMode('BOARD');
 
 if (boardEditFab) {
     boardEditFab.onclick = async () => {
-        // [BULLETPROOF INTERCEPTION] Absolute protection against tour writes to Firebase
+        // Secure interception for Interactive Tour Edit Mode
         if (window.isTourActive) {
             boardEditFab.classList.remove('tour-target-html');
             if (isBoardEditMode) {
@@ -535,7 +518,7 @@ if (boardEditFab) {
                 boardEditFab.disabled = false;
                 renderDigitalBoard();
                 setTimeout(() => window.nextTourStep(), 400);
-                return; // Strictly halts execution, never writes to Firebase!
+                return; // Strictly halts execution
             } else {
                 setTimeout(() => window.nextTourStep(), 400);
             }
@@ -550,8 +533,8 @@ if (boardEditFab) {
                 const newBusNoRaw = editData.newVal.trim();
                 const oldBusNoRaw = editData.oldVal.trim();
 
-                const newBusNos = newBusNoRaw.split(',').map(b => b.trim()).filter(Boolean).map(b => /^\d+$/.test(b) ? b.padStart(2, '0') : b);
-                const oldBusNos = oldBusNoRaw.split(',').map(b => b.trim()).filter(Boolean);
+                const newBusNos = newBusNoRaw.split(',').map(b => b.replace(/\D/g, '').trim()).filter(Boolean).map(b => b.padStart(2, '0'));
+                const oldBusNos = oldBusNoRaw.split(',').map(b => b.replace(/\D/g, '').trim()).filter(Boolean);
 
                 if (newBusNos.join(',') === oldBusNos.join(',')) continue; 
 
@@ -640,8 +623,9 @@ function renderDigitalBoard() {
 
             if (isAssigned) {
                 ab.busNos.forEach(bNo => {
-                    if (!assignedBuses.some(item => item.busNo === bNo)) {
-                        assignedBuses.push({ busNo: bNo, spotId: ab.spotId, users: ab.users || 1 });
+                    const cleanBusNo = bNo.replace(/\D/g, '');
+                    if (cleanBusNo && !assignedBuses.some(item => item.busNo === cleanBusNo)) {
+                        assignedBuses.push({ busNo: cleanBusNo, spotId: ab.spotId, users: ab.users || 1 });
                     }
                 });
             }
@@ -711,7 +695,8 @@ function renderDigitalBoard() {
 function showUnassignedTooltip(unassignedInfo) {
     if (!unassignedTooltipEl || !unassignedInfo) return;
     currentTooltipBus = unassignedInfo;
-    if (tooltipBusNumberEl) tooltipBusNumberEl.textContent = `Bus ${unassignedInfo.busNo}`;
+    const cleanBus = unassignedInfo.busNo ? unassignedInfo.busNo.replace(/\D/g, '') : '--';
+    if (tooltipBusNumberEl) tooltipBusNumberEl.textContent = `Bus ${cleanBus}`;
     unassignedTooltipEl.classList.remove('hidden');
 }
 
@@ -725,7 +710,7 @@ if (btnCloseTooltip) btnCloseTooltip.onclick = hideUnassignedTooltip;
 if (btnTooltipAssign) {
     btnTooltipAssign.onclick = () => {
         if (!currentTooltipBus) return;
-        const busNo = currentTooltipBus.busNo;
+        const busNo = currentTooltipBus.busNo ? currentTooltipBus.busNo.replace(/\D/g, '') : null;
         const spotId = currentTooltipBus.spotId;
         hideUnassignedTooltip();
 
@@ -815,7 +800,7 @@ function animateBusTransition(busNo, fromSpotId, toSpotId) {
     text.setAttribute('text-anchor', 'middle'); text.setAttribute('dy', '0.35em');
     text.setAttribute('class', 'spot-text text-black');
     text.style.fontSize = '4.2px'; text.style.fontWeight = '800';
-    text.textContent = busNo;
+    text.textContent = String(busNo).replace(/\D/g, ''); // Ensure pure digits
 
     animGroup.appendChild(pulseCircle);
     animGroup.appendChild(busCircle);
@@ -838,7 +823,7 @@ function animateBusTransition(busNo, fromSpotId, toSpotId) {
     }, 1300);
 }
 
-// --- UI PERFORMANCE DEBOUNCER (PREVENTS FREEZES DURING HIGH TRAFFIC) ---
+// --- UI PERFORMANCE DEBOUNCER ---
 let busDataTimeout = null;
 onValue(ref(db, 'activeBuses'), (snapshot) => { 
     if (busDataTimeout) clearTimeout(busDataTimeout);
@@ -1137,7 +1122,9 @@ function renderMapSpots() {
         if (appState === 'VIEW') {
             if (busInfo && busInfo.busNos.length > 0) {
                 g.classList.add('spot-yellow');
-                addTextToSpot(g, busInfo.busNos.join(','), 'text-black');
+                // Strict rule: 1 bus number maximum, forced to pure digits, forced to black text
+                const pureBusNum = String(busInfo.busNos[0]).replace(/\D/g, '');
+                addTextToSpot(g, pureBusNum, 'text-black');
                 g.onclick = (e) => { 
                     e.preventDefault(); e.stopPropagation(); 
                     if (window.ignoreMapTap) return; 
@@ -1147,7 +1134,8 @@ function renderMapSpots() {
                 };
             } else if (unassignedInfo) {
                 g.classList.add('spot-unassigned');
-                addTextToSpot(g, unassignedInfo.busNo, 'text-black');
+                const pureUnassignedNum = String(unassignedInfo.busNo).replace(/\D/g, '');
+                addTextToSpot(g, pureUnassignedNum, 'text-black');
                 g.onclick = (e) => { 
                     e.preventDefault(); e.stopPropagation(); 
                     if (window.ignoreMapTap) return; 
@@ -1163,7 +1151,8 @@ function renderMapSpots() {
         } else if (appState === 'SELECTION') {
             if (busInfo && busInfo.busNos.length > 0) {
                 g.classList.add('spot-green');
-                addTextToSpot(g, busInfo.busNos.join(','), 'text-green');
+                const pureBusNum = String(busInfo.busNos[0]).replace(/\D/g, '');
+                addTextToSpot(g, pureBusNum, 'text-black');
             } else {
                 g.classList.add('spot-grey');
             }
@@ -1171,7 +1160,8 @@ function renderMapSpots() {
             if (pendingUpdate.spotId === spotId) {
                 g.classList.remove('spot-grey', 'spot-green');
                 g.classList.add('spot-yellow');
-                addTextToSpot(g, pendingUpdate.busNo, 'text-black');
+                const purePendingNum = String(pendingUpdate.busNo).replace(/\D/g, '');
+                addTextToSpot(g, purePendingNum, 'text-black');
             }
 
             g.onclick = (e) => {
@@ -1195,16 +1185,14 @@ function renderMapSpots() {
                     sg.classList.remove('spot-yellow', 'spot-deep-green');
                     const txt = sg.querySelector('text');
                     if (txt && !sg.classList.contains('spot-green')) txt.remove();
-                    if (txt && sg.classList.contains('spot-green')) txt.classList.replace('text-white', 'text-green');
                 });
                 pendingUpdate.spotId = spotId;
                 if (busInfo) {
                     g.classList.add('spot-deep-green');
-                    const txt = g.querySelector('text.spot-text');
-                    if (txt) txt.classList.replace('text-green', 'text-white');
                 } else {
                     g.classList.add('spot-yellow');
-                    addTextToSpot(g, pendingUpdate.busNo, 'text-black');
+                    const purePendingNum = String(pendingUpdate.busNo).replace(/\D/g, '');
+                    addTextToSpot(g, purePendingNum, 'text-black');
                 }
             };
         }
@@ -1212,6 +1200,7 @@ function renderMapSpots() {
 }
 
 function addTextToSpot(g, textContent, colorClass) {
+    if (!textContent) return;
     const circle = g.querySelector('circle');
     if (!circle) return;
     const cx = circle.getAttribute('cx'), cy = circle.getAttribute('cy');
@@ -1521,7 +1510,6 @@ function renderList(buses) {
     const container = document.getElementById('bus-list');
     if (!container) return;
 
-    // Filter out virtual spots so only physical buses appear in the map list
     const physicalBuses = buses.filter(b => !b.spotId.startsWith('virtual-'));
     const groupedRoutes = getGroupedRoutes(physicalBuses);
     const emptyState = document.getElementById('empty-state');
@@ -1563,7 +1551,7 @@ function renderList(buses) {
         item.buses.forEach(bObj => {
             const badge = document.createElement('div');
             badge.className = 'bus-circle-badge';
-            badge.textContent = bObj.busNo;
+            badge.textContent = String(bObj.busNo).replace(/\D/g, ''); // Ensure pure digits only
             badge.addEventListener('click', (e) => { 
                 e.preventDefault(); e.stopPropagation(); window.ignoreMapTap = true; setTimeout(() => window.ignoreMapTap = false, 400);
                 focusOnSpot(bObj.spotId); selectListRoute(item.key, bObj.spotId, false);
@@ -1688,7 +1676,7 @@ function renderFetchBoardList() {
             card.className = 'depart-card';
             card.innerHTML = `
                 <div>
-                    <div class="depart-left-title">Bus #${bObj.busNo}</div>
+                    <div class="depart-left-title">Bus #${String(bObj.busNo).replace(/\D/g, '')}</div>
                     <div class="depart-left-sub">Route ${item.routeNum} - ${item.name}</div>
                 </div>
             `;
@@ -1699,7 +1687,7 @@ function renderFetchBoardList() {
                 pendingUpdate.isReplacement = false;
                 goToMapSelection(false); 
                 const summaryEl = document.getElementById('step-3-summary');
-                if (summaryEl) summaryEl.innerHTML = `Tap the map to update where <span style="color:#815FD7;font-weight:bold;">Bus ${pendingUpdate.busNo}</span> is parked.`;
+                if (summaryEl) summaryEl.innerHTML = `Tap the map to update where <span style="color:#815FD7;font-weight:bold;">Bus ${String(pendingUpdate.busNo).replace(/\D/g, '')}</span> is parked.`;
             };
             departList.appendChild(card);
         });
@@ -1747,7 +1735,7 @@ function populateBusGrid(isUnassignedMode) {
         const isSpottedUnassigned = unassignedBuses.find(ub => ub.busNo === bNo);
         const btn = document.createElement('div');
         btn.className = `grid-bus ${isActive ? 'green' : 'grey'}`;
-        btn.textContent = bNo;
+        btn.textContent = String(bNo).replace(/\D/g, ''); // Pure digits only
 
         btn.onclick = () => {
             grid.querySelectorAll('.grid-bus').forEach(el => el.classList.remove('yellow-active'));
@@ -1782,7 +1770,7 @@ if (document.getElementById('btn-next-2')) {
             if (isDifferentBus) {
                 if (s2) s2.classList.add('hidden');
                 if (s3Confirm) s3Confirm.classList.remove('hidden');
-                if (document.getElementById('step-3-confirm-summary')) document.getElementById('step-3-confirm-summary').textContent = `Bus ${pendingUpdate.busNo} for Route ${pendingUpdate.route.num} - ${pendingUpdate.route.name}`;
+                if (document.getElementById('step-3-confirm-summary')) document.getElementById('step-3-confirm-summary').textContent = `Bus ${String(pendingUpdate.busNo).replace(/\D/g, '')} for Route ${pendingUpdate.route.num} - ${pendingUpdate.route.name}`;
             } else {
                 goToMapSelection(false);
             }
@@ -1805,7 +1793,7 @@ function goToMapSelection(isReplacement) {
 
     const summaryEl = document.getElementById('step-3-summary');
     if (summaryEl && !summaryEl.innerHTML.includes('Fetch')) {
-        summaryEl.innerHTML = `Tap the exact spot where <span style="color:#815FD7;font-weight:bold;">Bus ${pendingUpdate.busNo}</span> is physically parked ${summaryStr}${extraText}`;
+        summaryEl.innerHTML = `Tap the exact spot where <span style="color:#815FD7;font-weight:bold;">Bus ${String(pendingUpdate.busNo).replace(/\D/g, '')}</span> is physically parked ${summaryStr}${extraText}`;
     }
 
     if (s3Confirm) s3Confirm.classList.add('hidden');
@@ -1816,19 +1804,37 @@ function goToMapSelection(isReplacement) {
     if (topBar) topBar.style.transform = `translateY(-150%)`;
     if (selFooter) selFooter.classList.remove('hidden');
 
+    const contW = mapContainer ? mapContainer.clientWidth : window.innerWidth;
+    const contH = mapContainer ? mapContainer.clientHeight : window.innerHeight;
+    const baseW = mapElement ? (mapElement.viewBox.baseVal.width || 1265) : 1265;
+    const baseH = mapElement ? (mapElement.viewBox.baseVal.height || 1335) : 1335;
+    const scaleRatio = Math.max(contW / baseW, contH / baseH);
+    const offsetX = ((baseW * scaleRatio) - contW) / 2;
+    const offsetY = ((baseH * scaleRatio) - contH) / 2;
+
     if (pendingUpdate.spotId && !pendingUpdate.spotId.startsWith('virtual-') && mapElement && mapContainer) {
         const spotGroup = document.getElementById(pendingUpdate.spotId);
         const circle = spotGroup ? spotGroup.querySelector('circle') : null;
         if (circle) {
             const cx = parseFloat(circle.getAttribute('cx')), cy = parseFloat(circle.getAttribute('cy'));
-            const scaleRatio = Math.max(mapContainer.clientWidth / mapElement.viewBox.baseVal.width, mapContainer.clientHeight / mapElement.viewBox.baseVal.height);
-            const offsetX = ((mapElement.viewBox.baseVal.width * scaleRatio) - mapContainer.clientWidth) / 2;
-            const offsetY = ((mapElement.viewBox.baseVal.height * scaleRatio) - mapContainer.clientHeight) / 2;
             scale = 3.5;
-            pointX = (mapContainer.clientWidth / 2) - (((cx * scaleRatio) - offsetX) * scale);
-            pointY = (mapContainer.clientHeight * 0.45) - (((cy * scaleRatio) - offsetY) * scale);
-        } else { scale = 1.6; pointX = 0; pointY = 0; }
-    } else { scale = 1.6; pointX = 0; pointY = 0; }
+            pointX = (contW / 2) - (((cx * scaleRatio) - offsetX) * scale);
+            pointY = (contH * 0.45) - (((cy * scaleRatio) - offsetY) * scale);
+        } else {
+            scale = 1.35;
+            const targetX = baseW / 2; 
+            const targetY = baseH * 0.35; 
+            pointX = (contW / 2) - (((targetX * scaleRatio) - offsetX) * scale);
+            pointY = (contH * 0.45) - (((targetY * scaleRatio) - offsetY) * scale);
+        }
+    } else {
+        // Top Center Glide Viewport for New Placements
+        scale = 1.35;
+        const targetX = baseW / 2; 
+        const targetY = baseH * 0.35; 
+        pointX = (contW / 2) - (((targetX * scaleRatio) - offsetX) * scale);
+        pointY = (contH * 0.45) - (((targetY * scaleRatio) - offsetY) * scale);
+    }
 
     if (mapElement) {
         mapElement.style.transition = 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)';
@@ -2027,7 +2033,7 @@ function showValidationCard(busInfo) {
     if (!valBubble || !busInfo) return;
     if (!currentValidationBus || currentValidationBus.spotId !== busInfo.spotId) isValidationCardCollapsed = false; 
     currentValidationBus = busInfo;
-    const busDisplay = busInfo.busNos ? busInfo.busNos.join(', ') : busInfo.busNo;
+    const busDisplay = busInfo.busNos ? String(busInfo.busNos[0]).replace(/\D/g, '') : String(busInfo.busNo).replace(/\D/g, '');
     
     let routeDesc = busInfo.name;
     if (busInfo.routes && Array.isArray(busInfo.routes)) routeDesc = busInfo.routes.map(r => `Route ${r.num} (${r.name})`).join(' & ');
@@ -2100,7 +2106,7 @@ if (btnValNo) {
 
         const summaryEl = document.getElementById('step-3-summary');
         if (summaryEl) {
-            summaryEl.innerHTML = `Tap the map spot where <span style="color:#815FD7;font-weight:bold;">Bus ${pendingUpdate.busNo}</span> is actually parked.`;
+            summaryEl.innerHTML = `Tap the map spot where <span style="color:#815FD7;font-weight:bold;">Bus ${String(pendingUpdate.busNo).replace(/\D/g, '')}</span> is actually parked.`;
         }
     };
 }
