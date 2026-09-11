@@ -88,6 +88,12 @@ const totalTourSteps = 12;
 window.isTourActive = false;
 let tourAbortController = new AbortController();
 
+// Map Engine Constants & Interaction State
+let scale = 1, pointX = 0, pointY = 0, startX = 0, startY = 0;
+let isPanning = false, initialPinchDist = null, initialScale = 1;
+let panPointerMoved = false, transformFramePending = false;
+const DEFAULT_MAP_ZOOM = 1.95, DEFAULT_MAP_CENTER_X = 735, DEFAULT_MAP_CENTER_Y = 750;
+
 // =============================================================================
 // 3. DOM ELEMENT DECLARATIONS
 // =============================================================================
@@ -517,20 +523,19 @@ if (toggleBoardBtn) toggleBoardBtn.onclick = () => switchDisplayMode('BOARD');
 
 if (boardEditFab) {
     boardEditFab.onclick = async () => {
+        // [BULLETPROOF INTERCEPTION] Absolute protection against tour writes to Firebase
         if (window.isTourActive) {
             boardEditFab.classList.remove('tour-target-html');
             if (isBoardEditMode) {
                 boardPendingEdits = {};
                 isBoardEditMode = false;
                 boardEditFab.classList.remove('saving');
-                const iconE = document.getElementById('fab-icon-edit');
-                const iconS = document.getElementById('fab-icon-save');
-                if (iconE) iconE.classList.remove('hidden');
-                if (iconS) iconS.classList.add('hidden');
+                if (fabIconEdit) fabIconEdit.classList.remove('hidden');
+                if (fabIconSave) fabIconSave.classList.add('hidden');
                 boardEditFab.disabled = false;
                 renderDigitalBoard();
                 setTimeout(() => window.nextTourStep(), 400);
-                return; // <-- CRITICAL: Stops here so live Firebase is never touched!
+                return; // Strictly halts execution, never writes to Firebase!
             } else {
                 setTimeout(() => window.nextTourStep(), 400);
             }
@@ -833,18 +838,22 @@ function animateBusTransition(busNo, fromSpotId, toSpotId) {
     }, 1300);
 }
 
-setInterval(async () => {
-    if (appState === 'VIEW' && !window.isTourActive) {
-        try {
-            const [snapActive, snapUn] = await Promise.all([
-                get(ref(db, 'activeBuses')),
-                get(ref(db, 'unassignedBuses'))
-            ]);
-            if (snapActive.exists()) handleBusesData(snapActive.val());
-            if (snapUn.exists()) handleUnassignedData(snapUn.val());
-        } catch (e) {}
-    }
-}, 60000);
+// --- UI PERFORMANCE DEBOUNCER (PREVENTS FREEZES DURING HIGH TRAFFIC) ---
+let busDataTimeout = null;
+onValue(ref(db, 'activeBuses'), (snapshot) => { 
+    if (busDataTimeout) clearTimeout(busDataTimeout);
+    busDataTimeout = setTimeout(() => {
+        try { handleBusesData(snapshot.val()); } catch (err) { console.warn(err); } 
+    }, 250); 
+});
+
+let unDataTimeout = null;
+onValue(ref(db, 'unassignedBuses'), (snapshot) => { 
+    if (unDataTimeout) clearTimeout(unDataTimeout);
+    unDataTimeout = setTimeout(() => {
+        try { handleUnassignedData(snapshot.val()); } catch (e) { console.warn(e); } 
+    }, 250);
+});
 
 window.triggerPostTourConsents = function() {
     const consentBanner = document.getElementById('consent-banner');
@@ -1104,9 +1113,6 @@ function handleUnassignedData(data) {
     if (appState === 'VIEW' && mapElement && currentDisplayMode === 'MAP') renderMapSpots();
 }
 
-onValue(ref(db, 'activeBuses'), (snapshot) => { try { handleBusesData(snapshot.val()); } catch (err) {} });
-onValue(ref(db, 'unassignedBuses'), (snapshot) => { try { handleUnassignedData(snapshot.val()); } catch (e) {} });
-
 function getUnassignedBusNumbers() {
     const assigned = new Set();
     activeBuses.forEach(ab => ab.busNos.forEach(b => assigned.add(b)));
@@ -1345,9 +1351,6 @@ if (draggableSheet) {
 // =============================================================================
 // 11. MAP VIEWPORT & PANNING (RAZOR SHARP VECTOR ENGINE)
 // =============================================================================
-let scale = 1, pointX = 0, pointY = 0, startX = 0, startY = 0, isPanning = false, initialPinchDist = null, initialScale = 1, panPointerMoved = false, transformFramePending = false;
-const DEFAULT_MAP_ZOOM = 1.95, DEFAULT_MAP_CENTER_X = 735, DEFAULT_MAP_CENTER_Y = 750;
-
 function applyBoundaries() {
     if (!mapContainer) return;
     const contW = mapContainer.clientWidth, contH = mapContainer.clientHeight, scaledW = contW * scale, scaledH = contH * scale;
@@ -2270,7 +2273,7 @@ window.showTourStep = function(stepNum) {
 
     if (stepNum === 8) {
         setTimeout(() => {
-            const listEl = document.querySelector('#bus-list .bus-item[data-route-key="route_6_hostel"]') || document.querySelector('#bus-list .bus-item');
+            const listEl = document.querySelector('#bus-list .bus-item[data-route-key="route_6_Hostel"]') || document.querySelector('#bus-list .bus-item');
             if (listEl) listEl.classList.add('tour-target-html');
         }, 300);
     }
@@ -2323,15 +2326,13 @@ window.finishTour = function() {
     window.isTourActive = false;
     tourAbortController.abort();
     
-    // --- FORCE UI & STATE RESET (Prevents ghost pushes) ---
+    // --- FORCE UI & STATE RESET ---
     isBoardEditMode = false;
     boardPendingEdits = {};
     if (boardEditFab) {
         boardEditFab.classList.remove('saving', 'tour-target-html');
-        const iconE = document.getElementById('fab-icon-edit');
-        const iconS = document.getElementById('fab-icon-save');
-        if (iconE) iconE.classList.remove('hidden');
-        if (iconS) iconS.classList.add('hidden');
+        if (fabIconEdit) fabIconEdit.classList.remove('hidden');
+        if (fabIconSave) fabIconSave.classList.add('hidden');
         boardEditFab.disabled = false;
     }
     pendingUpdate = { route: null, busNo: null, spotId: null, isReplacement: false };
