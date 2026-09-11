@@ -1,6 +1,6 @@
 {
   "name": "SeenMyBus",
-  "short_name": "Home",
+  "short_name": "SeenMyBus",
   "description": "Real-time crowdsourced bus tracking for Arka Jain University.",
   "start_url": "/",
   "scope": "/",

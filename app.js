@@ -4,12 +4,22 @@ import { getDatabase, ref, onValue, set, update, get, goOnline } from "https://w
 import * as Config from "./config.js";
 
 // =============================================================================
-// 1. CAMPUS SHIFT PURGE TIMINGS
+// 1. SPLASH SCREEN & SYSTEM ESSENTIALS
 // =============================================================================
+export function hideSplashScreen() {
+    const splash = document.getElementById('splash-screen');
+    if (splash && !splash.classList.contains('fade-out')) {
+        splash.classList.add('fade-out');
+        setTimeout(() => { if (splash.parentNode) splash.remove(); }, 500);
+    }
+}
+window.hideSplashScreen = hideSplashScreen;
+setTimeout(hideSplashScreen, 1500);
+
 export const CAMPUS_SHIFT_TIMINGS = [
     "13:15", // Shift 1 Cutoff: 1:15 PM
     "16:15", // Shift 2 Cutoff: 4:15 PM
-    "19:00"  // Shift 3 Cutoff: 7:00 PM
+    "18:00"  // Shift 3 Cutoff: 6:00 PM
 ];
 
 export const MAX_PARKING_STALE_MINUTES = 90;
@@ -32,12 +42,14 @@ let ALL_ROUTES = Config.DEFAULT_ROUTES || Config.ALL_ROUTES || [];
 let ALL_BUSES = Config.DEFAULT_BUSES || Config.ALL_BUSES || Array.from({ length: 45 }, (_, i) => String(i + 1).padStart(2, '0'));
 let ALL_SPOTS = Config.DEFAULT_SPOTS || Config.ALL_SPOTS || Array.from({ length: 41 }, (_, i) => `spot-${String(i + 1).padStart(2, '0')}`);
 
-const mapContainer = document.getElementById('map-container');
+// =============================================================================
+// 2. GLOBAL STATE DECLARATIONS
+// =============================================================================
 let mapElement = null;
 let activeBuses = [];
 let unassignedBuses = [];
-let appState = 'VIEW'; // 'VIEW' | 'SELECTION'
-let currentDisplayMode = 'MAP'; // 'MAP' | 'BOARD'
+let appState = 'VIEW'; 
+let currentDisplayMode = 'MAP'; 
 
 let isBoardEditMode = false;
 let boardPendingEdits = {}; 
@@ -56,14 +68,40 @@ let mapViewportInitialized = false;
 
 window.ignoreMapTap = false; 
 
+let currentTooltipBus = null;
+let currentValidationBus = null;
+let isValidationCardCollapsed = false;
+
+let currentTranslate = 0;
+let touchStartY = 0;
+let lastTouchY = 0;
+let lastTouchTime = 0;
+let velocityY = 0;
+let isDraggingSheet = false;
+let isEligibleForScrollDrag = false;
+
+let offlineDebounceTimer = null;
+let isCurrentlyOffline = false;
+
+let currentTourStep = 1;
+const totalTourSteps = 12;
+window.isTourActive = false;
+let tourAbortController = new AbortController();
+
+// =============================================================================
+// 3. DOM ELEMENT DECLARATIONS
+// =============================================================================
+const mapContainer = document.getElementById('map-container');
 const toggleMapBtn = document.getElementById('tab-mode-map');
 const toggleBoardBtn = document.getElementById('tab-mode-board');
 const digitalBoardContainer = document.getElementById('digital-board-container');
 const draggableSheet = document.getElementById('draggable-sheet');
 const boardGridEl = document.getElementById('board-grid');
+
 const boardEditFab = document.getElementById('board-edit-fab');
 const fabIconEdit = document.getElementById('fab-icon-edit');
 const fabIconSave = document.getElementById('fab-icon-save');
+
 const fixedFooter = document.getElementById('fixed-footer');
 const selFooter = document.getElementById('selection-footer');
 const topBar = document.querySelector('.top-bar');
@@ -77,6 +115,51 @@ const devNoteToggle = document.getElementById('dev-note-toggle');
 const devNoteCard = document.getElementById('dev-note-card');
 const devNoteDot = document.getElementById('dev-note-dot');
 
+const hrEl = document.getElementById('board-hr');
+const minEl = document.getElementById('board-min');
+const secEl = document.getElementById('board-sec');
+const ampmEl = document.getElementById('board-am-pm');
+const dateEl = document.getElementById('board-date');
+const dayEl = document.getElementById('board-day');
+const boardNextShiftEl = document.getElementById('board-next-shift');
+const boardCountdownEl = document.getElementById('board-countdown');
+
+const unassignedTooltipEl = document.getElementById('unassigned-tooltip');
+const tooltipBusNumberEl = document.getElementById('tooltip-bus-number');
+const btnCloseTooltip = document.getElementById('btn-close-tooltip');
+const btnTooltipAssign = document.getElementById('btn-tooltip-assign');
+
+const valBubble = document.getElementById('bus-validation-bubble');
+const valFab = document.getElementById('val-fab');
+const valCard = document.getElementById('val-card');
+const valBusDetails = document.getElementById('val-bus-details');
+const btnValYes = document.getElementById('btn-val-yes');
+const btnValNo = document.getElementById('btn-val-no');
+const btnValCollapse = document.getElementById('val-btn-collapse');
+
+const offlineOverlay = document.getElementById('offline-screen');
+const btnRetryNetwork = document.getElementById('btn-retry-network');
+
+const modal = document.getElementById('modal-overlay');
+const tabPark = document.getElementById('tab-park');
+const tabDepart = document.getElementById('tab-depart');
+const flowPark = document.getElementById('flow-park');
+const flowFetchBoard = document.getElementById('flow-fetch-board');
+const s1 = document.getElementById('step-1');
+const s2 = document.getElementById('step-2');
+const s3Confirm = document.getElementById('step-3-confirm');
+const grid = document.getElementById('bus-grid');
+const departList = document.getElementById('depart-bus-list');
+const rSelect = document.getElementById('route-select');
+const searchInput = document.getElementById('search-input');
+
+const dragHandle = document.getElementById('drag-handle-area');
+const contentWrapper = document.getElementById('sheet-content-wrapper');
+const busListScroll = document.getElementById('bus-list');
+
+// =============================================================================
+// 4. SERVICE WORKER & SYSTEM AUTH
+// =============================================================================
 if ('serviceWorker' in navigator) {
     let refreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -175,15 +258,6 @@ document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') goOnline(db);
 });
 
-function hideSplashScreen() {
-    const splash = document.getElementById('splash-screen');
-    if (splash && !splash.classList.contains('fade-out')) {
-        splash.classList.add('fade-out');
-        setTimeout(() => { if (splash.parentNode) splash.remove(); }, 500);
-    }
-}
-setTimeout(hideSplashScreen, 1500);
-
 function getCurrentCycleKey() {
     const now = new Date();
     let year = now.getFullYear();
@@ -280,7 +354,6 @@ function initNotificationSystem() {
 }
 
 function updateRouteSelectDropdown() {
-    const rSelect = document.getElementById('route-select');
     if (!rSelect) return;
     const currentVal = rSelect.value;
     rSelect.innerHTML = `
@@ -317,16 +390,19 @@ onValue(ref(db, 'appConfig'), (snapshot) => {
     }
 });
 
-const hrEl = document.getElementById('board-hr'), minEl = document.getElementById('board-min'), secEl = document.getElementById('board-sec');
-const ampmEl = document.getElementById('board-am-pm'), dateEl = document.getElementById('board-date'), dayEl = document.getElementById('board-day');
-const boardNextShiftEl = document.getElementById('board-next-shift');
-const boardCountdownEl = document.getElementById('board-countdown');
-
+// =============================================================================
+// 5. DIGITAL BOARD & FLIP CLOCK
+// =============================================================================
 function flipUnit(idPrefix, newVal) {
-    const topEl = document.getElementById(`${idPrefix}-top`).querySelector('span');
-    const botEl = document.getElementById(`${idPrefix}-bot`).querySelector('span');
+    const topCard = document.getElementById(`${idPrefix}-top`);
+    const botCard = document.getElementById(`${idPrefix}-bot`);
     const flapEl = document.getElementById(`${idPrefix}-flap`);
+    if (!topCard || !botCard || !flapEl) return;
+    
+    const topEl = topCard.querySelector('span');
+    const botEl = botCard.querySelector('span');
     const flapSpan = flapEl.querySelector('span');
+    if (!topEl || !botEl || !flapSpan) return;
     
     if (topEl.textContent === newVal) return;
     
@@ -353,12 +429,10 @@ function updateLiveClock() {
     const secStr = String(now.getSeconds()).padStart(2, '0');
 
     if (ampmEl) ampmEl.textContent = ampm;
-    if (document.getElementById('board-sec')) document.getElementById('board-sec').textContent = secStr;
+    if (secEl) secEl.textContent = secStr;
 
-    if (document.getElementById('hr-top')) {
-        flipUnit('hr', hrStr);
-        flipUnit('min', minStr);
-    }
+    flipUnit('hr', hrStr);
+    flipUnit('min', minStr);
 
     if (dateEl && dayEl) {
         const optionsDate = { day: 'numeric', month: 'short', year: 'numeric' };
@@ -375,7 +449,6 @@ function updateLiveClock() {
         if (nextCutoffStr) {
             const [ch, cm] = nextCutoffStr.split(':').map(Number);
             const period = ch >= 12 ? 'PM' : 'AM';
-            const displayHour = ch % 12 || 12;
             
             const totalSecondsLeft = (ch * 3600 + cm * 60) - (now.getHours() * 3600 + now.getMinutes() * 60 + currentSecs);
             const hLeft = Math.floor(totalSecondsLeft / 3600);
@@ -399,7 +472,7 @@ function switchDisplayMode(mode) {
         appState = 'VIEW';
         if (selFooter) selFooter.classList.add('hidden');
         if (topBar) topBar.style.transform = `translateY(0)`;
-        if (draggableSheet) draggableSheet.style.transform = `translateY(${currentTranslate}px)`;
+        setSheetTranslate(currentTranslate, true, 300);
         if (mapElement) {
             scale = 1.6; pointX = 0; pointY = 0;
             setTransform();
@@ -420,8 +493,8 @@ function switchDisplayMode(mode) {
         boardPendingEdits = {}; 
         if (boardEditFab) {
             boardEditFab.classList.remove('saving');
-            fabIconEdit.classList.remove('hidden');
-            fabIconSave.classList.add('hidden');
+            if (fabIconEdit) fabIconEdit.classList.remove('hidden');
+            if (fabIconSave) fabIconSave.classList.add('hidden');
         }
         
         if (fixedFooter && appState === 'VIEW') fixedFooter.classList.remove('hidden');
@@ -519,8 +592,8 @@ if (boardEditFab) {
             boardPendingEdits = {};
             isBoardEditMode = false;
             boardEditFab.classList.remove('saving');
-            fabIconEdit.classList.remove('hidden');
-            fabIconSave.classList.add('hidden');
+            if (fabIconEdit) fabIconEdit.classList.remove('hidden');
+            if (fabIconSave) fabIconSave.classList.add('hidden');
             boardEditFab.disabled = false;
             renderDigitalBoard();
 
@@ -528,8 +601,8 @@ if (boardEditFab) {
             isBoardEditMode = true;
             boardPendingEdits = {};
             boardEditFab.classList.add('saving');
-            fabIconEdit.classList.add('hidden');
-            fabIconSave.classList.remove('hidden');
+            if (fabIconEdit) fabIconEdit.classList.add('hidden');
+            if (fabIconSave) fabIconSave.classList.remove('hidden');
             renderDigitalBoard();
         }
     };
@@ -613,12 +686,9 @@ function renderDigitalBoard() {
     });
 }
 
-const unassignedTooltipEl = document.getElementById('unassigned-tooltip');
-const tooltipBusNumberEl = document.getElementById('tooltip-bus-number');
-const btnCloseTooltip = document.getElementById('btn-close-tooltip');
-const btnTooltipAssign = document.getElementById('btn-tooltip-assign');
-let currentTooltipBus = null;
-
+// =============================================================================
+// 6. UNASSIGNED BUS TOOLTIP
+// =============================================================================
 function showUnassignedTooltip(unassignedInfo) {
     if (!unassignedTooltipEl || !unassignedInfo) return;
     currentTooltipBus = unassignedInfo;
@@ -665,11 +735,12 @@ if (btnTooltipAssign) {
     };
 }
 
+// =============================================================================
+// 7. STALE DATA EVALUATOR & MAP TRANSITIONS
+// =============================================================================
 function shouldPurgeSpot(item, now = new Date()) {
     if (window.isTourActive) return false;
-    if (!item) return true;
-    if (typeof item !== 'object') return false; 
-    if (!item.updatedAt || isNaN(new Date(item.updatedAt).getTime())) return true;
+    if (!item || typeof item !== 'object' || !item.updatedAt || isNaN(new Date(item.updatedAt).getTime())) return true;
 
     const itemDate = new Date(item.updatedAt);
     if (now.toDateString() !== itemDate.toDateString()) return true;
@@ -780,7 +851,10 @@ if (acceptBtn) {
 if (localStorage.getItem('smb_tour_completed')) window.triggerPostTourConsents();
 loadUserRank();
 
-if (localStorage.getItem('smb_dev_note_read') === 'true' && devNoteDot) {
+// =============================================================================
+// 8. DEV NOTE & SIDEBAR EVENTS
+// =============================================================================
+if (devNoteDot && localStorage.getItem('smb_dev_note_read') === 'true') {
     devNoteDot.style.display = 'none';
 }
 
@@ -804,6 +878,9 @@ if (btnHam) btnHam.onclick = togglePanel;
 if (closePanel) closePanel.onclick = togglePanel;
 if (sideOverlay) sideOverlay.onclick = togglePanel;
 
+// =============================================================================
+// 9. MAP FETCH & PURE VECTOR SHARPNESS
+// =============================================================================
 fetch('./ArkaJainUniversityBusMap.xml')
     .then(res => { if (!res.ok) throw new Error("Map load failure"); return res.text(); })
     .then(svgText => {
@@ -1127,32 +1204,133 @@ function addTextToSpot(g, textContent, colorClass) {
     g.appendChild(text);
 }
 
-const dragHandle = document.getElementById('drag-handle-area');
-const contentWrapper = document.getElementById('sheet-content-wrapper');
-let currentTranslate = 0, sheetStartY = 0, isDraggingSheet = false;
-
-if (dragHandle) {
-    dragHandle.addEventListener('touchstart', (e) => {
-        sheetStartY = e.touches[0].clientY - currentTranslate;
-        isDraggingSheet = true;
-        if (draggableSheet) draggableSheet.style.transition = 'none';
-    }, { passive: true });
-    dragHandle.addEventListener('touchmove', (e) => {
-        if (!isDraggingSheet || !contentWrapper || !draggableSheet) return;
-        const maxTranslate = contentWrapper.offsetHeight; 
-        currentTranslate = Math.max(0, Math.min(e.touches[0].clientY - sheetStartY, maxTranslate));
-        draggableSheet.style.transform = `translateY(${currentTranslate}px)`;
-    }, { passive: true });
-    dragHandle.addEventListener('touchend', () => {
-        isDraggingSheet = false;
-        if (!contentWrapper || !draggableSheet) return;
-        draggableSheet.style.transition = 'transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1)';
-        const maxTranslate = contentWrapper.offsetHeight;
-        currentTranslate = (currentTranslate > maxTranslate / 3) ? maxTranslate : 0;
-        draggableSheet.style.transform = `translateY(${currentTranslate}px)`;
-    });
+// =============================================================================
+// 10. FLUID SHEET TOUCH & DRAG
+// =============================================================================
+function setSheetTranslate(y, animate = false, duration = 380) {
+    if (!draggableSheet) return;
+    currentTranslate = y;
+    if (animate) {
+        draggableSheet.style.transition = `transform ${duration}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+    } else {
+        draggableSheet.style.transition = 'none';
+    }
+    draggableSheet.style.transform = `translate3d(0, ${y}px, 0)`;
 }
 
+function getMaxSheetTranslate() {
+    if (!contentWrapper) return 300;
+    return contentWrapper.offsetHeight;
+}
+
+function onSheetTouchStart(e) {
+    if (!contentWrapper || !draggableSheet) return;
+    const touch = e.touches[0];
+    touchStartY = touch.clientY;
+    lastTouchY = touch.clientY;
+    lastTouchTime = Date.now();
+    velocityY = 0;
+
+    const target = e.target;
+    const isHandle = dragHandle && (dragHandle.contains(target) || dragHandle === target);
+    const isTopArea = touch.clientY - draggableSheet.getBoundingClientRect().top < 65;
+    const isListAtTop = busListScroll ? busListScroll.scrollTop <= 0 : true;
+
+    if (isHandle || isTopArea || (isListAtTop && currentTranslate > 0)) {
+        isDraggingSheet = true;
+        draggableSheet.style.transition = 'none';
+    } else if (isListAtTop) {
+        isEligibleForScrollDrag = true;
+    }
+}
+
+function onSheetTouchMove(e) {
+    if (!isDraggingSheet && !isEligibleForScrollDrag) return;
+    const touch = e.touches[0];
+    const now = Date.now();
+    const deltaY = touch.clientY - touchStartY;
+    const dt = now - lastTouchTime;
+    
+    if (dt > 0) {
+        velocityY = (touch.clientY - lastTouchY) / dt;
+    }
+    lastTouchY = touch.clientY;
+    lastTouchTime = now;
+
+    if (!isDraggingSheet && isEligibleForScrollDrag) {
+        if (deltaY > 6 && (busListScroll ? busListScroll.scrollTop <= 0 : true)) {
+            isDraggingSheet = true;
+            isEligibleForScrollDrag = false;
+            touchStartY = touch.clientY; 
+            draggableSheet.style.transition = 'none';
+        } else if (deltaY < 0) {
+            isEligibleForScrollDrag = false;
+            return;
+        }
+    }
+
+    if (!isDraggingSheet) return;
+
+    if (e.cancelable) e.preventDefault();
+
+    const maxTranslate = getMaxSheetTranslate();
+    let newPos = currentTranslate + deltaY;
+
+    if (newPos < 0) {
+        newPos = newPos * 0.25; 
+    } else if (newPos > maxTranslate) {
+        newPos = maxTranslate + (newPos - maxTranslate) * 0.25; 
+    }
+
+    draggableSheet.style.transform = `translate3d(0, ${newPos}px, 0)`;
+}
+
+function onSheetTouchEnd(e) {
+    if (!isDraggingSheet) {
+        isEligibleForScrollDrag = false;
+        return;
+    }
+    isDraggingSheet = false;
+    isEligibleForScrollDrag = false;
+
+    const maxTranslate = getMaxSheetTranslate();
+    const currentMatrix = window.getComputedStyle(draggableSheet).transform;
+    let currentY = 0;
+    if (currentMatrix && currentMatrix !== 'none') {
+        const matrixValues = currentMatrix.match(/matrix.*\((.+)\)/);
+        if (matrixValues) {
+            const values = matrixValues[1].split(', ');
+            currentY = parseFloat(values[5] || values[13] || 0);
+        }
+    }
+
+    let snapToBottom = false;
+    if (velocityY > 0.35) {
+        snapToBottom = true;
+    } else if (velocityY < -0.35) {
+        snapToBottom = false;
+    } else {
+        snapToBottom = currentY > (maxTranslate * 0.45);
+    }
+
+    const targetY = snapToBottom ? maxTranslate : 0;
+    setSheetTranslate(targetY, true, 360);
+}
+
+if (dragHandle) {
+    dragHandle.addEventListener('touchstart', onSheetTouchStart, { passive: true });
+    dragHandle.addEventListener('touchmove', onSheetTouchMove, { passive: false });
+    dragHandle.addEventListener('touchend', onSheetTouchEnd, { passive: true });
+}
+if (draggableSheet) {
+    draggableSheet.addEventListener('touchstart', onSheetTouchStart, { passive: true });
+    draggableSheet.addEventListener('touchmove', onSheetTouchMove, { passive: false });
+    draggableSheet.addEventListener('touchend', onSheetTouchEnd, { passive: true });
+}
+
+// =============================================================================
+// 11. MAP VIEWPORT & PANNING (RAZOR SHARP VECTOR ENGINE)
+// =============================================================================
 let scale = 1, pointX = 0, pointY = 0, startX = 0, startY = 0, isPanning = false, initialPinchDist = null, initialScale = 1, panPointerMoved = false, transformFramePending = false;
 const DEFAULT_MAP_ZOOM = 1.95, DEFAULT_MAP_CENTER_X = 735, DEFAULT_MAP_CENTER_Y = 750;
 
@@ -1326,12 +1504,14 @@ function renderList(buses) {
     const container = document.getElementById('bus-list');
     if (!container) return;
 
+    // Filter out virtual spots so only physical buses appear in the map list
     const physicalBuses = buses.filter(b => !b.spotId.startsWith('virtual-'));
     const groupedRoutes = getGroupedRoutes(physicalBuses);
     const emptyState = document.getElementById('empty-state');
 
     if (groupedRoutes.length === 0) {
-        listOrderKeys = []; container.innerHTML = '';
+        listOrderKeys = []; 
+        container.innerHTML = '';
         if (emptyState) emptyState.classList.remove('hidden');
         return;
     }
@@ -1395,7 +1575,6 @@ function highlightInList(spotId, fromMap = false) {
     selectListRoute(targetItem.dataset.routeKey, spotId, fromMap);
 }
 
-const searchInput = document.getElementById('search-input');
 if (searchInput) {
     searchInput.addEventListener('input', (e) => {
         currentSearchQuery = e.target.value.toLowerCase().trim();
@@ -1410,10 +1589,9 @@ function focusOnSpot(spotId) {
     const circle = spotGroup.querySelector('circle');
     if (!circle) return;
     
-    if (draggableSheet && document.getElementById('sheet-content-wrapper')) {
-        const halfHeight = document.getElementById('sheet-content-wrapper').offsetHeight * 0.6; 
-        let currentTranslate = halfHeight;
-        draggableSheet.style.transform = `translateY(${halfHeight}px)`;
+    if (draggableSheet && contentWrapper) {
+        const halfHeight = contentWrapper.offsetHeight * 0.55; 
+        setSheetTranslate(halfHeight, true, 340);
     }
 
     const cx = parseFloat(circle.getAttribute('cx')), cy = parseFloat(circle.getAttribute('cy'));
@@ -1447,13 +1625,6 @@ function focusOnSpot(spotId) {
         } else hideValidationCard();
     }
 }
-
-const modal = document.getElementById('modal-overlay');
-const tabPark = document.getElementById('tab-park'), tabDepart = document.getElementById('tab-depart');
-const flowPark = document.getElementById('flow-park'), flowFetchBoard = document.getElementById('flow-fetch-board');
-const s1 = document.getElementById('step-1'), s2 = document.getElementById('step-2'), s3Confirm = document.getElementById('step-3-confirm');
-const grid = document.getElementById('bus-grid'), departList = document.getElementById('depart-bus-list');
-const rSelect = document.getElementById('route-select');
 
 if (document.getElementById('btn-update-bus')) {
     document.getElementById('btn-update-bus').onclick = () => {
@@ -1624,7 +1795,7 @@ function goToMapSelection(isReplacement) {
     if (s2) s2.classList.add('hidden');
     if (modal) modal.classList.add('hidden');
     if (fixedFooter) fixedFooter.classList.add('hidden');
-    if (draggableSheet) draggableSheet.style.transform = `translateY(150%)`;
+    setSheetTranslate(1200, true, 300);
     if (topBar) topBar.style.transform = `translateY(-150%)`;
     if (selFooter) selFooter.classList.remove('hidden');
 
@@ -1655,7 +1826,7 @@ if (document.getElementById('btn-prev-3')) {
         appState = 'VIEW';
         if (selFooter) selFooter.classList.add('hidden');
         if (currentDisplayMode === 'MAP' && fixedFooter) fixedFooter.classList.remove('hidden');
-        if (draggableSheet) draggableSheet.style.transform = `translateY(0px)`;
+        setSheetTranslate(0, true, 300);
         if (topBar) topBar.style.transform = `translateY(0)`;
         if (modal) modal.classList.remove('hidden');
         renderMapSpots();
@@ -1672,7 +1843,7 @@ if (document.getElementById('btn-submit-update')) {
             if (modal) modal.classList.add('hidden');
             if (selFooter) selFooter.classList.add('hidden');
             if (currentDisplayMode === 'MAP' && fixedFooter) fixedFooter.classList.remove('hidden');
-            if (draggableSheet) draggableSheet.style.transform = `translateY(0px)`;
+            setSheetTranslate(0, true, 300);
             if (topBar) topBar.style.transform = `translateY(0)`;
             appState = 'VIEW';
             renderMapSpots();
@@ -1688,7 +1859,7 @@ if (document.getElementById('btn-submit-update')) {
 
         if (selFooter) selFooter.classList.add('hidden');
         if (currentDisplayMode === 'MAP' && fixedFooter) fixedFooter.classList.remove('hidden');
-        if (draggableSheet) draggableSheet.style.transform = `translateY(0px)`;
+        setSheetTranslate(0, true, 300);
         if (topBar) topBar.style.transform = `translateY(0)`;
 
         try {
@@ -1826,14 +1997,14 @@ if (document.getElementById('btn-submit-update')) {
     };
 }
 
-const valBubble = document.getElementById('bus-validation-bubble');
-const valFab = document.getElementById('val-fab'), valCard = document.getElementById('val-card');
-const valBusDetails = document.getElementById('val-bus-details');
-const btnValYes = document.getElementById('btn-val-yes'), btnValNo = document.getElementById('btn-val-no'), btnValCollapse = document.getElementById('val-btn-collapse');
-
-let currentValidationBus = null, isValidationCardCollapsed = false;
-
-if (valBubble) ['touchstart', 'touchmove', 'touchend', 'mousedown', 'mousemove', 'mouseup', 'click', 'wheel'].forEach(evt => { valBubble.addEventListener(evt, (e) => e.stopPropagation(), { passive: false }); });
+// =============================================================================
+// 12. VALIDATION POPUP LOGIC
+// =============================================================================
+if (valBubble) {
+    ['touchstart', 'touchmove', 'touchend', 'mousedown', 'mousemove', 'mouseup', 'click', 'wheel'].forEach(evt => {
+        valBubble.addEventListener(evt, (e) => e.stopPropagation(), { passive: false });
+    });
+}
 
 function showValidationCard(busInfo) {
     if (!valBubble || !busInfo) return;
@@ -1846,8 +2017,13 @@ function showValidationCard(busInfo) {
 
     if (valBusDetails) valBusDetails.textContent = `Bus number ${busDisplay} for ${routeDesc} has been parked here.`;
     valBubble.classList.remove('hidden');
-    if (isValidationCardCollapsed) { if (valFab) valFab.classList.remove('hidden'); if (valCard) valCard.classList.add('hidden'); }
-    else { if (valFab) valFab.classList.add('hidden'); if (valCard) valCard.classList.remove('hidden'); }
+    if (isValidationCardCollapsed) { 
+        if (valFab) valFab.classList.remove('hidden'); 
+        if (valCard) valCard.classList.add('hidden'); 
+    } else { 
+        if (valFab) valFab.classList.add('hidden'); 
+        if (valCard) valCard.classList.remove('hidden'); 
+    }
 }
 
 function hideValidationCard() {
@@ -1887,7 +2063,6 @@ if (btnValYes) {
     };
 }
 
-// Relocate Bus Logic triggered by tapping "No" on validation card
 if (btnValNo) {
     btnValNo.onclick = () => {
         if (window.isTourActive) { if (typeof hideValidationCard === 'function') hideValidationCard(); if (typeof window.nextTourStep === 'function') window.nextTourStep(); return; }
@@ -1913,11 +2088,9 @@ if (btnValNo) {
     };
 }
 
-const offlineOverlay = document.getElementById('offline-screen');
-const btnRetryNetwork = document.getElementById('btn-retry-network');
-let offlineDebounceTimer = null;
-let isCurrentlyOffline = false;
-
+// =============================================================================
+// 13. NETWORK & OFFLINE RESILIENCE
+// =============================================================================
 async function pingNetwork() {
     if (!navigator.onLine) return false;
     try {
@@ -1974,19 +2147,16 @@ window.addEventListener('pageshow', (event) => {
     window.scrollTo(0, 0); document.body.scrollTop = 0;
     if (sidePanel) { sidePanel.classList.remove('open'); sidePanel.scrollTop = 0; }
     if (sideOverlay) sideOverlay.classList.add('hidden');
-    currentTranslate = 0;
-    if (draggableSheet) { draggableSheet.style.transition = 'transform 0.3s ease'; draggableSheet.style.transform = 'translateY(0px)'; }
+    setSheetTranslate(0, true, 300);
     if (fixedFooter && currentDisplayMode === 'MAP') { fixedFooter.classList.remove('hidden'); fixedFooter.style.transform = 'translateY(0)'; }
     if (topBar) topBar.style.transform = 'translateY(0)';
     appState = 'VIEW';
     if (mapElement && currentDisplayMode === 'MAP') renderMapSpots();
 });
 
-let currentTourStep = 1;
-const totalTourSteps = 12;
-window.isTourActive = false;
-let tourAbortController = new AbortController();
-
+// =============================================================================
+// 14. INTERACTIVE ONBOARDING TOUR
+// =============================================================================
 window.forceTourRefresh = async function() {
     try {
         const snapActive = await get(ref(db, 'activeBuses'));
@@ -2075,14 +2245,12 @@ window.showTourStep = function(stepNum) {
 
     if (stepNum === 6) {
         setTimeout(() => {
-            const btnYes = document.getElementById('btn-val-yes'), btnNo = document.getElementById('btn-val-no');
-            if (btnYes) btnYes.classList.add('tour-target-html');
-            if (btnNo) btnNo.classList.add('tour-target-html');
+            if (btnValYes) btnValYes.classList.add('tour-target-html');
+            if (btnValNo) btnValNo.classList.add('tour-target-html');
         }, 500);
     }
 
     if (stepNum === 7) {
-        const searchInput = document.getElementById('search-input');
         if (searchInput) searchInput.classList.add('tour-target-html');
     }
 
@@ -2094,22 +2262,20 @@ window.showTourStep = function(stepNum) {
     }
 
     if (stepNum === 9) {
-        const tabBoard = document.getElementById('tab-mode-board');
-        if (tabBoard) {
-            tabBoard.classList.add('tour-target-html');
-            tabBoard.addEventListener('click', () => {
-                tabBoard.classList.remove('tour-target-html');
+        if (toggleBoardBtn) {
+            toggleBoardBtn.classList.add('tour-target-html');
+            toggleBoardBtn.addEventListener('click', () => {
+                toggleBoardBtn.classList.remove('tour-target-html');
                 setTimeout(() => window.nextTourStep(), 400);
             }, { once: true, signal });
         }
     }
 
     if (stepNum === 10) {
-        const editFab = document.getElementById('board-edit-fab');
-        if (editFab) {
-            editFab.classList.add('tour-target-html');
-            editFab.addEventListener('click', () => {
-                editFab.classList.remove('tour-target-html');
+        if (boardEditFab) {
+            boardEditFab.classList.add('tour-target-html');
+            boardEditFab.addEventListener('click', () => {
+                boardEditFab.classList.remove('tour-target-html');
                 setTimeout(() => window.nextTourStep(), 400);
             }, { once: true, signal });
         }
@@ -2163,8 +2329,6 @@ const replayTourBtn = document.getElementById('btn-replay-tour');
 if (replayTourBtn) {
     replayTourBtn.onclick = (e) => {
         e.preventDefault();
-        const sidePanel = document.getElementById('side-panel');
-        const sideOverlay = document.getElementById('side-panel-overlay');
         if (sidePanel) sidePanel.classList.remove('open');
         if (sideOverlay) sideOverlay.classList.add('hidden');
         window.showTourStep(1);
