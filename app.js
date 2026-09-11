@@ -953,7 +953,7 @@ function handleBusesData(data) {
     if (window.isTourActive) {
         const mockTime = Date.now();
         data = {
-            'spot-15': { busNo: "04", busNos: ["04"], routeNum: "6", name: "Adityapur", users: 1, updatedAt: mockTime, updatedBy: 'tour', routes: [{num:"6", name:"Adityapur"}] },
+            'spot-15': { busNo: "04", busNos: ["04"], routeNum: "6", name: "Hostel", users: 1, updatedAt: mockTime, updatedBy: 'tour', routes: [{num:"6", name:"Hostel"}] },
             'spot-03': { busNo: "25", busNos: ["25"], routeNum: "3", name: "Bistupur", users: 1, updatedAt: mockTime, updatedBy: 'tour', routes: [{num:"3", name:"Bistupur"}] },
             'spot-07': { busNo: "22", busNos: ["22"], routeNum: "7", name: "Mango chowk", users: 1, updatedAt: mockTime, updatedBy: 'tour', routes: [{num:"7", name:"Mango chowk"}] }
         };
@@ -2224,14 +2224,14 @@ window.showTourStep = function(stepNum) {
 
         setTimeout(() => {
             focusOnSpot('spot-15');
-            const adityapurSpot = document.getElementById('spot-15');
-            if (adityapurSpot) adityapurSpot.classList.add('tour-target-glow');
+            const hostelSpot = document.getElementById('spot-15');
+            if (hostelSpot) hostelSpot.classList.add('tour-target-glow');
 
             ['spot-15', 'spot-03', 'spot-07'].forEach(sId => {
                 const el = document.getElementById(sId);
                 if (el) {
                     el.addEventListener('click', () => {
-                        if (adityapurSpot) adityapurSpot.classList.remove('tour-target-glow');
+                        if (hostelSpot) hostelSpot.classList.remove('tour-target-glow');
                         setTimeout(() => {
                             window.nextTourStep();
                             const busInfo = activeBuses.find(b => b.spotId === sId);
@@ -2256,7 +2256,7 @@ window.showTourStep = function(stepNum) {
 
     if (stepNum === 8) {
         setTimeout(() => {
-            const listEl = document.querySelector('#bus-list .bus-item[data-route-key="route_6_Adityapur"]') || document.querySelector('#bus-list .bus-item');
+            const listEl = document.querySelector('#bus-list .bus-item[data-route-key="route_6_hostel"]') || document.querySelector('#bus-list .bus-item');
             if (listEl) listEl.classList.add('tour-target-html');
         }, 300);
     }
