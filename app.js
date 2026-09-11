@@ -3,16 +3,16 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/fireba
 import { getDatabase, ref, onValue, set, update, get, goOnline } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-database.js";
 import * as Config from "./config.js";
 
-// =============================================================================
-// 1. GLOBAL STATE & MAP ENGINE DECLARATIONS (HOISTED FOR SCOPE SAFETY)
-// =============================================================================
+// Campus shift timings and stale threshold
 export const CAMPUS_SHIFT_TIMINGS = ["13:15", "16:15", "18:00"];
 export const MAX_PARKING_STALE_MINUTES = 90;
 
+// Pull defaults from config file with safe fallbacks
 let ALL_ROUTES = Config.DEFAULT_ROUTES || Config.ALL_ROUTES || [];
 let ALL_BUSES = Config.DEFAULT_BUSES || Config.ALL_BUSES || Array.from({ length: 45 }, (_, i) => String(i + 1).padStart(2, '0'));
 let ALL_SPOTS = Config.DEFAULT_SPOTS || Config.ALL_SPOTS || Array.from({ length: 41 }, (_, i) => `spot-${String(i + 1).padStart(2, '0')}`);
 
+// App state & data holders
 let mapElement = null;
 let activeBuses = [];
 let unassignedBuses = [];
@@ -40,6 +40,7 @@ let currentTooltipBus = null;
 let currentValidationBus = null;
 let isValidationCardCollapsed = false;
 
+// Bottom sheet drag tracking
 let currentTranslate = 0;
 let touchStartY = 0;
 let lastTouchY = 0;
@@ -51,12 +52,13 @@ let isEligibleForScrollDrag = false;
 let offlineDebounceTimer = null;
 let isCurrentlyOffline = false;
 
+// Onboarding tour tracking
 let currentTourStep = 1;
 const totalTourSteps = 12;
 window.isTourActive = false;
 let tourAbortController = new AbortController();
 
-// --- MAP ENGINE CORE VARIABLES ---
+// Map viewport and transform calculations
 let scale = 1, pointX = 0, pointY = 0, startX = 0, startY = 0;
 let isPanning = false, initialPinchDist = null, initialScale = 1;
 let panPointerMoved = false, transformFramePending = false;
@@ -64,7 +66,7 @@ const DEFAULT_MAP_ZOOM = 1.95;
 const DEFAULT_MAP_CENTER_X = 735;
 const DEFAULT_MAP_CENTER_Y = 750;
 
-// DOM Elements
+// Cached DOM references
 const mapContainer = document.getElementById('map-container');
 const toggleMapBtn = document.getElementById('tab-mode-map');
 const toggleBoardBtn = document.getElementById('tab-mode-board');
@@ -121,10 +123,7 @@ const dragHandle = document.getElementById('drag-handle-area');
 const contentWrapper = document.getElementById('sheet-content-wrapper');
 const busListScroll = document.getElementById('bus-list');
 
-
-// =============================================================================
-// 2. INITIALIZATION & FIREBASE SETUP
-// =============================================================================
+// Remove splash overlay when ready
 export function hideSplashScreen() {
     const splash = document.getElementById('splash-screen');
     if (splash && !splash.classList.contains('fade-out')) {
@@ -135,6 +134,7 @@ export function hideSplashScreen() {
 window.hideSplashScreen = hideSplashScreen;
 setTimeout(hideSplashScreen, 1500);
 
+// Initialize Firebase client
 const firebaseConfig = {
     apiKey: "AIzaSyCXejNb5wgmZ6KJ3Q4r4BhBqw9KPn7iX5I",
     authDomain: "seenmybus.firebaseapp.com",
@@ -149,6 +149,7 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const messaging = getMessaging(app);
 
+// Register service worker and handle auto-reloads on updates
 if ('serviceWorker' in navigator) {
     let refreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -172,6 +173,7 @@ if ('serviceWorker' in navigator) {
     }).catch(err => console.warn("SW Registration:", err));
 }
 
+// Toggle admin link visibility based on session
 function checkAdminVisibility() {
     const adminLink = document.getElementById('admin-portal-link');
     const adminTopBtn = document.getElementById('admin-top-btn');
@@ -185,6 +187,7 @@ function checkAdminVisibility() {
 }
 checkAdminVisibility();
 
+// Secret triple-tap on logo opens admin login
 function initSidebarLogoTap() {
     const brandLogo = document.querySelector('.brand-logo');
     if (!brandLogo) return;
@@ -205,6 +208,7 @@ function initSidebarLogoTap() {
 }
 initSidebarLogoTap();
 
+// PWA install prompt handler
 let deferredInstallPrompt = null;
 const installAppBtn = document.getElementById('btn-install-app') || document.getElementById('pwa-install-btn');
 
@@ -229,6 +233,7 @@ window.addEventListener('appinstalled', () => {
     deferredInstallPrompt = null;
 });
 
+// Generate anonymous per-device identifier for community tracking
 function getDeviceToken() {
     let token = localStorage.getItem('smb_device_token');
     if (!token) {
@@ -239,14 +244,16 @@ function getDeviceToken() {
 }
 const currentDeviceToken = getDeviceToken();
 
+// Monitor database connection status and reconnect on foreground
 const connectedRef = ref(db, ".info/connected");
 onValue(connectedRef, (snap) => {
-    if (snap.val() === true) console.log("SeenMyBus Realtime Connected");
+    if (snap.val() === true) console.log("SeenMyBus Connected");
 });
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') goOnline(db);
 });
 
+// Calculate monthly contributor cycle key (resets on 5th of each month)
 function getCurrentCycleKey() {
     const now = new Date();
     let year = now.getFullYear();
@@ -294,6 +301,7 @@ async function loadUserRank() {
     } catch (e) {}
 }
 
+// Push notification token registration
 async function registerFCMToken() {
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     try {
@@ -305,6 +313,19 @@ async function registerFCMToken() {
         if (fcmToken) await set(ref(db, `fcmTokens/${currentDeviceToken}`), fcmToken);
     } catch (err) {}
 }
+
+// Receive push notifications when the tab is open in the foreground
+onMessage(messaging, (payload) => {
+    const title = payload.notification?.title || payload.data?.title || 'SeenMyBus Alert';
+    const body = payload.notification?.body || payload.data?.message || '';
+    if (Notification.permission === 'granted') {
+        new Notification(title, {
+            body: body,
+            icon: './icon-192.png',
+            badge: './app-icon.png'
+        });
+    }
+});
 
 function initNotificationSystem() {
     const notifBanner = document.getElementById('notif-banner');
@@ -356,6 +377,7 @@ function updateRouteSelectDropdown() {
 }
 updateRouteSelectDropdown();
 
+// Sync dynamic configuration overrides from database
 onValue(ref(db, 'appConfig'), (snapshot) => {
     const configData = snapshot.val();
     if (!configData) return;
@@ -379,9 +401,7 @@ onValue(ref(db, 'appConfig'), (snapshot) => {
     }
 });
 
-// =============================================================================
-// 3. DIGITAL BOARD & FLIP CLOCK
-// =============================================================================
+// Flip-clock digit animation
 function flipUnit(idPrefix, newVal) {
     const topCard = document.getElementById(`${idPrefix}-top`);
     const botCard = document.getElementById(`${idPrefix}-bot`);
@@ -456,6 +476,7 @@ function updateLiveClock() {
 setInterval(updateLiveClock, 1000);
 updateLiveClock();
 
+// Switch between live map and digital timetable
 function switchDisplayMode(mode) {
     if (appState === 'SELECTION') {
         appState = 'VIEW';
@@ -504,9 +525,10 @@ function switchDisplayMode(mode) {
 if (toggleMapBtn) toggleMapBtn.onclick = () => switchDisplayMode('MAP');
 if (toggleBoardBtn) toggleBoardBtn.onclick = () => switchDisplayMode('BOARD');
 
+// Edit FAB handler on digital board
 if (boardEditFab) {
     boardEditFab.onclick = async () => {
-        // Secure interception for Interactive Tour Edit Mode
+        // Intercept click during tour mode to prevent mock data leaking into database
         if (window.isTourActive) {
             boardEditFab.classList.remove('tour-target-html');
             if (isBoardEditMode) {
@@ -518,7 +540,7 @@ if (boardEditFab) {
                 boardEditFab.disabled = false;
                 renderDigitalBoard();
                 setTimeout(() => window.nextTourStep(), 400);
-                return; // Strictly halts execution
+                return;
             } else {
                 setTimeout(() => window.nextTourStep(), 400);
             }
@@ -689,9 +711,6 @@ function renderDigitalBoard() {
     });
 }
 
-// =============================================================================
-// 6. UNASSIGNED BUS TOOLTIP
-// =============================================================================
 function showUnassignedTooltip(unassignedInfo) {
     if (!unassignedTooltipEl || !unassignedInfo) return;
     currentTooltipBus = unassignedInfo;
@@ -739,9 +758,7 @@ if (btnTooltipAssign) {
     };
 }
 
-// =============================================================================
-// 7. STALE DATA EVALUATOR & MAP TRANSITIONS
-// =============================================================================
+// Purge expired slots older than cutoff times
 function shouldPurgeSpot(item, now = new Date()) {
     if (window.isTourActive) return false;
     if (!item || typeof item !== 'object' || !item.updatedAt || isNaN(new Date(item.updatedAt).getTime())) return true;
@@ -800,7 +817,7 @@ function animateBusTransition(busNo, fromSpotId, toSpotId) {
     text.setAttribute('text-anchor', 'middle'); text.setAttribute('dy', '0.35em');
     text.setAttribute('class', 'spot-text text-black');
     text.style.fontSize = '4.2px'; text.style.fontWeight = '800';
-    text.textContent = String(busNo).replace(/\D/g, ''); // Ensure pure digits
+    text.textContent = String(busNo).replace(/\D/g, '');
 
     animGroup.appendChild(pulseCircle);
     animGroup.appendChild(busCircle);
@@ -823,7 +840,7 @@ function animateBusTransition(busNo, fromSpotId, toSpotId) {
     }, 1300);
 }
 
-// --- UI PERFORMANCE DEBOUNCER ---
+// Debounce database handlers to avoid UI freezes during heavy live traffic
 let busDataTimeout = null;
 onValue(ref(db, 'activeBuses'), (snapshot) => { 
     if (busDataTimeout) clearTimeout(busDataTimeout);
@@ -839,6 +856,23 @@ onValue(ref(db, 'unassignedBuses'), (snapshot) => {
         try { handleUnassignedData(snapshot.val()); } catch (e) { console.warn(e); } 
     }, 250);
 });
+
+// Periodic stale check with randomized client jitter to prevent synchronized database load
+const clientJitter = Math.floor(Math.random() * 15000);
+setTimeout(() => {
+    setInterval(async () => {
+        if (appState === 'VIEW' && !window.isTourActive) {
+            try {
+                const [snapActive, snapUn] = await Promise.all([
+                    get(ref(db, 'activeBuses')),
+                    get(ref(db, 'unassignedBuses'))
+                ]);
+                if (snapActive.exists()) handleBusesData(snapActive.val());
+                if (snapUn.exists()) handleUnassignedData(snapUn.val());
+            } catch (e) {}
+        }
+    }, 60000);
+}, clientJitter);
 
 window.triggerPostTourConsents = function() {
     const consentBanner = document.getElementById('consent-banner');
@@ -859,9 +893,6 @@ if (acceptBtn) {
 if (localStorage.getItem('smb_tour_completed')) window.triggerPostTourConsents();
 loadUserRank();
 
-// =============================================================================
-// 8. DEV NOTE & SIDEBAR EVENTS
-// =============================================================================
 if (devNoteDot && localStorage.getItem('smb_dev_note_read') === 'true') {
     devNoteDot.style.display = 'none';
 }
@@ -886,9 +917,7 @@ if (btnHam) btnHam.onclick = togglePanel;
 if (closePanel) closePanel.onclick = togglePanel;
 if (sideOverlay) sideOverlay.onclick = togglePanel;
 
-// =============================================================================
-// 9. MAP FETCH & PURE VECTOR SHARPNESS
-// =============================================================================
+// Load campus SVG map
 fetch('./ArkaJainUniversityBusMap.xml')
     .then(res => { if (!res.ok) throw new Error("Map load failure"); return res.text(); })
     .then(svgText => {
@@ -1104,6 +1133,7 @@ function getUnassignedBusNumbers() {
     return ALL_BUSES.filter(bNo => !assigned.has(bNo));
 }
 
+// Render circles on SVG spots
 function renderMapSpots() {
     ALL_SPOTS.forEach(spotId => {
         const g = document.getElementById(spotId);
@@ -1122,7 +1152,6 @@ function renderMapSpots() {
         if (appState === 'VIEW') {
             if (busInfo && busInfo.busNos.length > 0) {
                 g.classList.add('spot-yellow');
-                // Strict rule: 1 bus number maximum, forced to pure digits, forced to black text
                 const pureBusNum = String(busInfo.busNos[0]).replace(/\D/g, '');
                 addTextToSpot(g, pureBusNum, 'text-black');
                 g.onclick = (e) => { 
@@ -1141,7 +1170,7 @@ function renderMapSpots() {
                     if (window.ignoreMapTap) return; 
                     hideValidationCard();
                     focusOnSpot(spotId); 
-                    showUnassignedTooltip(unassignedInfo);
+                    showUnassignedTooltip(unassignedInfo); 
                 };
             } else {
                 g.classList.add('spot-grey');
@@ -1213,9 +1242,7 @@ function addTextToSpot(g, textContent, colorClass) {
     g.appendChild(text);
 }
 
-// =============================================================================
-// 10. FLUID SHEET TOUCH & DRAG
-// =============================================================================
+// Bottom sheet drag gestures
 function setSheetTranslate(y, animate = false, duration = 380) {
     if (!draggableSheet) return;
     currentTranslate = y;
@@ -1337,9 +1364,7 @@ if (draggableSheet) {
     draggableSheet.addEventListener('touchend', onSheetTouchEnd, { passive: true });
 }
 
-// =============================================================================
-// 11. MAP VIEWPORT & PANNING (RAZOR SHARP VECTOR ENGINE)
-// =============================================================================
+// Map coordinate boundary clamping
 function applyBoundaries() {
     if (!mapContainer) return;
     const contW = mapContainer.clientWidth, contH = mapContainer.clientHeight, scaledW = contW * scale, scaledH = contH * scale;
@@ -1510,6 +1535,7 @@ function renderList(buses) {
     const container = document.getElementById('bus-list');
     if (!container) return;
 
+    // Filter out virtual spots so only buses physically parked appear on the bottom sheet
     const physicalBuses = buses.filter(b => !b.spotId.startsWith('virtual-'));
     const groupedRoutes = getGroupedRoutes(physicalBuses);
     const emptyState = document.getElementById('empty-state');
@@ -1551,7 +1577,7 @@ function renderList(buses) {
         item.buses.forEach(bObj => {
             const badge = document.createElement('div');
             badge.className = 'bus-circle-badge';
-            badge.textContent = String(bObj.busNo).replace(/\D/g, ''); // Ensure pure digits only
+            badge.textContent = String(bObj.busNo).replace(/\D/g, ''); 
             badge.addEventListener('click', (e) => { 
                 e.preventDefault(); e.stopPropagation(); window.ignoreMapTap = true; setTimeout(() => window.ignoreMapTap = false, 400);
                 focusOnSpot(bObj.spotId); selectListRoute(item.key, bObj.spotId, false);
@@ -1735,7 +1761,7 @@ function populateBusGrid(isUnassignedMode) {
         const isSpottedUnassigned = unassignedBuses.find(ub => ub.busNo === bNo);
         const btn = document.createElement('div');
         btn.className = `grid-bus ${isActive ? 'green' : 'grey'}`;
-        btn.textContent = String(bNo).replace(/\D/g, ''); // Pure digits only
+        btn.textContent = String(bNo).replace(/\D/g, ''); 
 
         btn.onclick = () => {
             grid.querySelectorAll('.grid-bus').forEach(el => el.classList.remove('yellow-active'));
@@ -1828,7 +1854,7 @@ function goToMapSelection(isReplacement) {
             pointY = (contH * 0.45) - (((targetY * scaleRatio) - offsetY) * scale);
         }
     } else {
-        // Top Center Glide Viewport for New Placements
+        // Glide camera to top-center focus for choosing parking slot
         scale = 1.35;
         const targetX = baseW / 2; 
         const targetY = baseH * 0.35; 
@@ -1980,6 +2006,7 @@ if (document.getElementById('btn-submit-update')) {
 
                 existingVoters[currentDeviceToken] = true;
 
+                // Push change alert to Cloudflare Worker
                 if (pendingUpdate.isReplacement && !isNewRoute && routeOldBus && routeOldBus !== selectedBus) {
                     const notifId = Date.now().toString() + "_" + Math.random().toString(36).substr(2, 4);
                     notificationUpdates[notifId] = {
@@ -2020,9 +2047,6 @@ if (document.getElementById('btn-submit-update')) {
     };
 }
 
-// =============================================================================
-// 12. VALIDATION POPUP LOGIC
-// =============================================================================
 if (valBubble) {
     ['touchstart', 'touchmove', 'touchend', 'mousedown', 'mousemove', 'mouseup', 'click', 'wheel'].forEach(evt => {
         valBubble.addEventListener(evt, (e) => e.stopPropagation(), { passive: false });
@@ -2111,9 +2135,7 @@ if (btnValNo) {
     };
 }
 
-// =============================================================================
-// 13. NETWORK & OFFLINE RESILIENCE
-// =============================================================================
+// Network connectivity detection
 async function pingNetwork() {
     if (!navigator.onLine) return false;
     try {
@@ -2177,9 +2199,6 @@ window.addEventListener('pageshow', (event) => {
     if (mapElement && currentDisplayMode === 'MAP') renderMapSpots();
 });
 
-// =============================================================================
-// 14. INTERACTIVE ONBOARDING TOUR
-// =============================================================================
 window.forceTourRefresh = async function() {
     try {
         const snapActive = await get(ref(db, 'activeBuses'));
@@ -2332,7 +2351,7 @@ window.finishTour = function() {
     window.isTourActive = false;
     tourAbortController.abort();
     
-    // --- FORCE UI & STATE RESET ---
+    // Clear temporary tour state
     isBoardEditMode = false;
     boardPendingEdits = {};
     if (boardEditFab) {
