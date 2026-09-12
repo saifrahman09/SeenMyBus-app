@@ -3,16 +3,16 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/12.17.1/fireba
 import { getDatabase, ref, onValue, set, update, get, goOnline } from "https://www.gstatic.com/firebasejs/12.17.1/firebase-database.js";
 import * as Config from "./config.js";
 
-// Campus shift timings and stale threshold
+// =============================================================================
+// 1. GLOBAL STATE & MAP ENGINE DECLARATIONS (HOISTED FOR SCOPE SAFETY)
+// =============================================================================
 export const CAMPUS_SHIFT_TIMINGS = ["13:15", "16:15", "18:00"];
 export const MAX_PARKING_STALE_MINUTES = 90;
 
-// Pull defaults from config file with safe fallbacks
 let ALL_ROUTES = Config.DEFAULT_ROUTES || Config.ALL_ROUTES || [];
 let ALL_BUSES = Config.DEFAULT_BUSES || Config.ALL_BUSES || Array.from({ length: 45 }, (_, i) => String(i + 1).padStart(2, '0'));
 let ALL_SPOTS = Config.DEFAULT_SPOTS || Config.ALL_SPOTS || Array.from({ length: 41 }, (_, i) => `spot-${String(i + 1).padStart(2, '0')}`);
 
-// App state & data holders
 let mapElement = null;
 let activeBuses = [];
 let unassignedBuses = [];
@@ -40,7 +40,6 @@ let currentTooltipBus = null;
 let currentValidationBus = null;
 let isValidationCardCollapsed = false;
 
-// Bottom sheet drag tracking
 let currentTranslate = 0;
 let touchStartY = 0;
 let lastTouchY = 0;
@@ -52,13 +51,12 @@ let isEligibleForScrollDrag = false;
 let offlineDebounceTimer = null;
 let isCurrentlyOffline = false;
 
-// Onboarding tour tracking
 let currentTourStep = 1;
 const totalTourSteps = 12;
 window.isTourActive = false;
 let tourAbortController = new AbortController();
 
-// Map viewport and transform calculations
+// --- MAP ENGINE CORE VARIABLES ---
 let scale = 1, pointX = 0, pointY = 0, startX = 0, startY = 0;
 let isPanning = false, initialPinchDist = null, initialScale = 1;
 let panPointerMoved = false, transformFramePending = false;
@@ -66,7 +64,7 @@ const DEFAULT_MAP_ZOOM = 1.95;
 const DEFAULT_MAP_CENTER_X = 735;
 const DEFAULT_MAP_CENTER_Y = 750;
 
-// Cached DOM references
+// DOM Elements
 const mapContainer = document.getElementById('map-container');
 const toggleMapBtn = document.getElementById('tab-mode-map');
 const toggleBoardBtn = document.getElementById('tab-mode-board');
@@ -123,7 +121,10 @@ const dragHandle = document.getElementById('drag-handle-area');
 const contentWrapper = document.getElementById('sheet-content-wrapper');
 const busListScroll = document.getElementById('bus-list');
 
-// Remove splash overlay when ready
+
+// =============================================================================
+// 2. INITIALIZATION & FIREBASE SETUP
+// =============================================================================
 export function hideSplashScreen() {
     const splash = document.getElementById('splash-screen');
     if (splash && !splash.classList.contains('fade-out')) {
@@ -134,7 +135,6 @@ export function hideSplashScreen() {
 window.hideSplashScreen = hideSplashScreen;
 setTimeout(hideSplashScreen, 1500);
 
-// Initialize Firebase client
 const firebaseConfig = {
     apiKey: "AIzaSyCXejNb5wgmZ6KJ3Q4r4BhBqw9KPn7iX5I",
     authDomain: "seenmybus.firebaseapp.com",
@@ -149,7 +149,6 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const messaging = getMessaging(app);
 
-// Register service worker and handle auto-reloads on updates
 if ('serviceWorker' in navigator) {
     let refreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -173,7 +172,6 @@ if ('serviceWorker' in navigator) {
     }).catch(err => console.warn("SW Registration:", err));
 }
 
-// Toggle admin link visibility based on session
 function checkAdminVisibility() {
     const adminLink = document.getElementById('admin-portal-link');
     const adminTopBtn = document.getElementById('admin-top-btn');
@@ -187,7 +185,6 @@ function checkAdminVisibility() {
 }
 checkAdminVisibility();
 
-// Secret triple-tap on logo opens admin login
 function initSidebarLogoTap() {
     const brandLogo = document.querySelector('.brand-logo');
     if (!brandLogo) return;
@@ -208,7 +205,6 @@ function initSidebarLogoTap() {
 }
 initSidebarLogoTap();
 
-// PWA install prompt handler
 let deferredInstallPrompt = null;
 const installAppBtn = document.getElementById('btn-install-app') || document.getElementById('pwa-install-btn');
 
@@ -233,7 +229,6 @@ window.addEventListener('appinstalled', () => {
     deferredInstallPrompt = null;
 });
 
-// Generate anonymous per-device identifier for community tracking
 function getDeviceToken() {
     let token = localStorage.getItem('smb_device_token');
     if (!token) {
@@ -244,16 +239,14 @@ function getDeviceToken() {
 }
 const currentDeviceToken = getDeviceToken();
 
-// Monitor database connection status and reconnect on foreground
 const connectedRef = ref(db, ".info/connected");
 onValue(connectedRef, (snap) => {
-    if (snap.val() === true) console.log("SeenMyBus Connected");
+    if (snap.val() === true) console.log("SeenMyBus Realtime Connected");
 });
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') goOnline(db);
 });
 
-// Calculate monthly contributor cycle key (resets on 5th of each month)
 function getCurrentCycleKey() {
     const now = new Date();
     let year = now.getFullYear();
@@ -301,7 +294,6 @@ async function loadUserRank() {
     } catch (e) {}
 }
 
-// Push notification token registration
 async function registerFCMToken() {
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     try {
@@ -310,20 +302,31 @@ async function registerFCMToken() {
             vapidKey: 'BPgf5onxNHlQiYFzQ3Q03IHvYKe22Yuu1JahIj9MQkvl5XwadaViZOAAVXCV_tmqhwWlq2vfZe1T0ybd9PGhLsI',
             serviceWorkerRegistration: registration
         });
-        if (fcmToken) await set(ref(db, `fcmTokens/${currentDeviceToken}`), fcmToken);
-    } catch (err) {}
+        if (fcmToken) {
+            await set(ref(db, `fcmTokens/${currentDeviceToken}`), fcmToken);
+            console.log("FCM Token registered and saved to Firebase successfully.");
+        }
+    } catch (err) {
+        console.error("CRITICAL: FCM Token generation failed:", err);
+    }
 }
 
-// Receive push notifications when the tab is open in the foreground
-onMessage(messaging, (payload) => {
+onMessage(messaging, async (payload) => {
+    console.log("Foreground push received from FCM:", payload);
     const title = payload.notification?.title || payload.data?.title || 'SeenMyBus Alert';
-    const body = payload.notification?.body || payload.data?.message || '';
-    if (Notification.permission === 'granted') {
-        new Notification(title, {
+    const body = payload.notification?.body || payload.data?.message || payload.data?.body || '';
+    
+    try {
+        const registration = await navigator.serviceWorker.ready;
+        await registration.showNotification(title, {
             body: body,
             icon: './icon-192.png',
-            badge: './app-icon.png'
+            badge: './app-icon.png',
+            vibrate: [100, 50, 100],
+            data: { url: window.location.origin + '/' }
         });
+    } catch (err) {
+        console.error("Foreground notification display error:", err);
     }
 });
 
@@ -377,7 +380,6 @@ function updateRouteSelectDropdown() {
 }
 updateRouteSelectDropdown();
 
-// Sync dynamic configuration overrides from database
 onValue(ref(db, 'appConfig'), (snapshot) => {
     const configData = snapshot.val();
     if (!configData) return;
@@ -401,7 +403,9 @@ onValue(ref(db, 'appConfig'), (snapshot) => {
     }
 });
 
-// Flip-clock digit animation
+// =============================================================================
+// 3. DIGITAL BOARD & FLIP CLOCK
+// =============================================================================
 function flipUnit(idPrefix, newVal) {
     const topCard = document.getElementById(`${idPrefix}-top`);
     const botCard = document.getElementById(`${idPrefix}-bot`);
@@ -476,7 +480,6 @@ function updateLiveClock() {
 setInterval(updateLiveClock, 1000);
 updateLiveClock();
 
-// Switch between live map and digital timetable
 function switchDisplayMode(mode) {
     if (appState === 'SELECTION') {
         appState = 'VIEW';
@@ -525,10 +528,8 @@ function switchDisplayMode(mode) {
 if (toggleMapBtn) toggleMapBtn.onclick = () => switchDisplayMode('MAP');
 if (toggleBoardBtn) toggleBoardBtn.onclick = () => switchDisplayMode('BOARD');
 
-// Edit FAB handler on digital board
 if (boardEditFab) {
     boardEditFab.onclick = async () => {
-        // Intercept click during tour mode to prevent mock data leaking into database
         if (window.isTourActive) {
             boardEditFab.classList.remove('tour-target-html');
             if (isBoardEditMode) {
@@ -550,6 +551,16 @@ if (boardEditFab) {
             boardEditFab.disabled = true;
             const now = Date.now();
 
+            // [NEW: Unassigned Auto-Promotion]
+            // Fetch both active and unassigned data to cross-reference physical locations seamlessly
+            const [snapActive, snapUnassigned] = await Promise.all([
+                get(ref(db, 'activeBuses')),
+                get(ref(db, 'unassignedBuses'))
+            ]);
+            const activeData = snapActive.val() || {};
+            const unassignedData = snapUnassigned.val() || {};
+            const updates = {};
+
             for (const [routeKey, editData] of Object.entries(boardPendingEdits)) {
                 const route = editData.route;
                 const newBusNoRaw = editData.newVal.trim();
@@ -563,55 +574,85 @@ if (boardEditFab) {
                 let existingSpotsForRoute = [];
                 let existingVoters = {};
 
-                Object.keys(activeBuses).forEach(index => {
-                    const ab = activeBuses[index];
+                Object.keys(activeData).forEach(index => {
+                    const ab = activeData[index];
                     const hasRoute = (ab.routes && Array.isArray(ab.routes))
                         ? ab.routes.some(r => r.num === route.num && r.name === route.name)
                         : (ab.routeNum === route.num && ab.name === route.name);
 
                     if (hasRoute) {
-                        existingSpotsForRoute.push(ab.spotId);
+                        existingSpotsForRoute.push(index);
                         existingVoters = { ...existingVoters, ...(ab.votersLedger || {}) };
                     }
                 });
 
                 existingVoters[currentDeviceToken] = true;
                 let usersCount = existingVoters['admin_locked'] ? 999 : Object.keys(existingVoters).length;
-                const updates = {};
 
                 newBusNos.forEach((bNo, idx) => {
-                    let spotIdToUse;
-                    if (idx < existingSpotsForRoute.length) {
-                        spotIdToUse = existingSpotsForRoute[idx];
-                        updates[`activeBuses/${spotIdToUse}/busNo`] = bNo;
-                        updates[`activeBuses/${spotIdToUse}/busNos`] = [bNo];
-                        updates[`activeBuses/${spotIdToUse}/votersLedger`] = existingVoters;
-                        updates[`activeBuses/${spotIdToUse}/users`] = usersCount;
-                        updates[`activeBuses/${spotIdToUse}/updatedAt`] = now;
-                        updates[`activeBuses/${spotIdToUse}/updatedBy`] = currentDeviceToken;
-                    } else {
-                        spotIdToUse = `virtual-${route.num}-${bNo}-${now}-${idx}`;
-                        updates[`activeBuses/${spotIdToUse}`] = {
-                            busNo: bNo,
-                            busNos: [bNo],
-                            routeNum: route.num,
-                            name: route.name,
-                            routes: [{ num: route.num, name: route.name }],
-                            users: existingVoters['admin_locked'] ? 999 : 1,
-                            votersLedger: existingVoters,
-                            updatedAt: now,
-                            updatedBy: currentDeviceToken
-                        };
+                    let targetSpotId = null;
+
+                    // CHECK 1: Is this bus currently sitting on the map as "Unassigned" (grey dot)?
+                    Object.keys(unassignedData).forEach(uSpotId => {
+                        if (unassignedData[uSpotId] && String(unassignedData[uSpotId].busNo).replace(/\D/g, '') === bNo) {
+                            targetSpotId = uSpotId;
+                        }
+                    });
+
+                    // CHECK 2: If not unassigned, is it already active somewhere else on the map?
+                    if (!targetSpotId) {
+                        Object.keys(activeData).forEach(aSpotId => {
+                            const ab = activeData[aSpotId];
+                            const bList = ab.busNos || (ab.busNo ? [ab.busNo] : []);
+                            if (bList.includes(bNo)) targetSpotId = aSpotId;
+                        });
                     }
+
+                    // CHECK 3: Completely new manual entry? Use existing physical spot for this route, or virtualize
+                    if (!targetSpotId) {
+                        if (idx < existingSpotsForRoute.length) {
+                            targetSpotId = existingSpotsForRoute[idx];
+                        } else {
+                            targetSpotId = `virtual-${route.num}-${bNo}-${now}-${idx}`;
+                        }
+                    }
+
+                    // Promote unassigned dot: Wipe from unassigned pool
+                    if (unassignedData[targetSpotId]) {
+                        updates[`unassignedBuses/${targetSpotId}`] = null;
+                    }
+
+                    updates[`activeBuses/${targetSpotId}`] = {
+                        busNo: bNo,
+                        busNos: [bNo],
+                        routeNum: route.num,
+                        name: route.name,
+                        routes: [{ num: route.num, name: route.name }],
+                        users: usersCount,
+                        votersLedger: existingVoters,
+                        updatedAt: now,
+                        updatedBy: currentDeviceToken
+                    };
                 });
 
-                for (let i = newBusNos.length; i < existingSpotsForRoute.length; i++) {
-                    updates[`activeBuses/${existingSpotsForRoute[i]}`] = null;
-                }
+                // Nullify leftover old spots for this route that were NOT overwritten or picked up above
+                const assignedSpots = newBusNos.map((bNo) => {
+                    let foundSpot = null;
+                    Object.keys(unassignedData).forEach(uSpotId => { if (unassignedData[uSpotId] && String(unassignedData[uSpotId].busNo).replace(/\D/g, '') === bNo) foundSpot = uSpotId; });
+                    if (!foundSpot) Object.keys(activeData).forEach(aSpotId => { const ab = activeData[aSpotId]; const bList = ab.busNos || (ab.busNo ? [ab.busNo] : []); if (bList.includes(bNo)) foundSpot = aSpotId; });
+                    return foundSpot;
+                }).filter(Boolean);
 
-                await update(ref(db), updates);
-                addContributionPoints(10);
+                for (let i = 0; i < existingSpotsForRoute.length; i++) {
+                    const oldSpot = existingSpotsForRoute[i];
+                    if (!updates[`activeBuses/${oldSpot}`] && !assignedSpots.includes(oldSpot)) {
+                         updates[`activeBuses/${oldSpot}`] = null;
+                    }
+                }
             }
+
+            await update(ref(db), updates);
+            addContributionPoints(10);
 
             boardPendingEdits = {};
             isBoardEditMode = false;
@@ -840,7 +881,6 @@ function animateBusTransition(busNo, fromSpotId, toSpotId) {
     }, 1300);
 }
 
-// Debounce database handlers to avoid UI freezes during heavy live traffic
 let busDataTimeout = null;
 onValue(ref(db, 'activeBuses'), (snapshot) => { 
     if (busDataTimeout) clearTimeout(busDataTimeout);
@@ -857,7 +897,6 @@ onValue(ref(db, 'unassignedBuses'), (snapshot) => {
     }, 250);
 });
 
-// Periodic stale check with randomized client jitter to prevent synchronized database load
 const clientJitter = Math.floor(Math.random() * 15000);
 setTimeout(() => {
     setInterval(async () => {
@@ -917,7 +956,6 @@ if (btnHam) btnHam.onclick = togglePanel;
 if (closePanel) closePanel.onclick = togglePanel;
 if (sideOverlay) sideOverlay.onclick = togglePanel;
 
-// Load campus SVG map
 fetch('./ArkaJainUniversityBusMap.xml')
     .then(res => { if (!res.ok) throw new Error("Map load failure"); return res.text(); })
     .then(svgText => {
@@ -1133,7 +1171,6 @@ function getUnassignedBusNumbers() {
     return ALL_BUSES.filter(bNo => !assigned.has(bNo));
 }
 
-// Render circles on SVG spots
 function renderMapSpots() {
     ALL_SPOTS.forEach(spotId => {
         const g = document.getElementById(spotId);
@@ -1198,13 +1235,20 @@ function renderMapSpots() {
                 e.stopPropagation();
                 if (window.ignoreMapTap) return;
                 
+                // [NEW: Soft Eviction Prompt for Map Overwrites]
                 if (busInfo) {
                     const existingBuses = busInfo.busNos || (busInfo.busNo ? [busInfo.busNo] : []);
                     const isSameBus = existingBuses.includes(pendingUpdate.busNo);
-
                     if (!isSameBus) {
-                        alert(`Slot is already occupied by Bus ${existingBuses.join(', ')}. A parking slot can only hold one bus at a time.`);
-                        return;
+                        const confirmEvict = confirm(`Spot is currently occupied by Bus ${existingBuses.join(', ')}. Are you sure it has moved and Bus ${pendingUpdate.busNo} is here now?`);
+                        if (!confirmEvict) return;
+                    }
+                } else if (unassignedInfo) {
+                    const pureUnassignedNum = String(unassignedInfo.busNo).replace(/\D/g, '');
+                    const purePendingNum = String(pendingUpdate.busNo).replace(/\D/g, '');
+                    if (pureUnassignedNum !== purePendingNum) {
+                        const confirmEvict = confirm(`Spot is currently holding Unassigned Bus ${pureUnassignedNum}. Are you sure it has moved and Bus ${purePendingNum} is here now?`);
+                        if (!confirmEvict) return;
                     }
                 }
                 
@@ -1364,7 +1408,6 @@ if (draggableSheet) {
     draggableSheet.addEventListener('touchend', onSheetTouchEnd, { passive: true });
 }
 
-// Map coordinate boundary clamping
 function applyBoundaries() {
     if (!mapContainer) return;
     const contW = mapContainer.clientWidth, contH = mapContainer.clientHeight, scaledW = contW * scale, scaledH = contH * scale;
@@ -1559,7 +1602,8 @@ function renderList(buses) {
         const displayUsers = item.users >= 999 ? 1 : (item.users || 1);
         if (item.users >= 999) {
             subtextHtml = `<span class="verified-text verified-official">Official Campus Schedule</span>`;
-        } else if (item.users >= 3) {
+        // [NEW: Changed validation requirement from 3 to 5 votes]
+        } else if (item.users >= 5) {
             subtextHtml = `<span class="verified-text verified-consensus">✓ Community Confirmed (${item.users} votes)</span>`;
         } else {
             subtextHtml = `<span class="verified-text">Reported by ${displayUsers} student${displayUsers !== 1 ? 's' : ''}</span>`;
@@ -1913,23 +1957,43 @@ if (document.getElementById('btn-submit-update')) {
 
         try {
             const [snapActive, snapUn] = await Promise.all([get(ref(db, 'activeBuses')), get(ref(db, 'unassignedBuses'))]);
-            const activeData = snapActive.val() || {}, unData = snapUn.val() || {};
+            const activeData = snapActive.val() || {};
+            const unData = snapUn.val() || {};
             const updates = {};
             let notificationUpdates = {};
             const timestamp = Date.now();
 
             let routeOldBus = null, isNewRoute = true, oldSpotForSelectedBus = null;
 
+            // [NEW: Virtual Holding Pool for Soft Eviction]
+            // If the physical spot already contains an active bus, we clone it to a virtual space
+            // instead of deleting it or blocking the user.
+            let oldBusToVirtualize = null;
             if (activeData[targetSpot]) {
                 const existingSpot = activeData[targetSpot];
                 const existingBuses = existingSpot.busNos || (existingSpot.busNo ? [existingSpot.busNo] : []);
                 const isSameBus = existingBuses.includes(selectedBus);
 
                 if (!isSameBus && existingBuses.length > 0) {
-                    alert(`Slot is occupied by Bus ${existingBuses.join(', ')}. A parking slot can only hold one physical bus at a time. Please mark it departed first.`);
-                    document.getElementById('btn-submit-update').disabled = false;
-                    return;
+                    oldBusToVirtualize = { ...existingSpot }; 
                 }
+            }
+
+            // Remove target spot from unassigned if it exists and differs from selected bus
+            if (unData[targetSpot] && unData[targetSpot].busNo !== selectedBus) {
+                updates[`unassignedBuses/${targetSpot}`] = null;
+            }
+
+            // Apply virtualization to the evicted bus
+            if (oldBusToVirtualize) {
+                const oldBusNo = oldBusToVirtualize.busNos ? oldBusToVirtualize.busNos[0] : oldBusToVirtualize.busNo;
+                const virtId = `virtual-${oldBusToVirtualize.routeNum}-${oldBusNo}-${timestamp}-evicted`;
+                updates[`activeBuses/${virtId}`] = {
+                    ...oldBusToVirtualize,
+                    spotId: virtId,
+                    updatedAt: timestamp,
+                    updatedBy: currentDeviceToken
+                };
             }
 
             Object.keys(activeData).filter(k => k.startsWith('spot-') || k.startsWith('virtual-')).forEach(sId => {
@@ -1989,10 +2053,10 @@ if (document.getElementById('btn-submit-update')) {
                 let existingRoutes = [];
                 let existingVoters = {};
 
-                if (activeData[targetSpot]) {
-                    const spotData = activeData[targetSpot];
-                    if (spotData.routes && Array.isArray(spotData.routes)) existingRoutes = [...spotData.routes];
-                    else if (spotData.routeNum && spotData.name) existingRoutes = [{ num: spotData.routeNum, name: spotData.name }];
+if (activeData[targetSpot] && !oldBusToVirtualize) {
+    const spotData = activeData[targetSpot];
+    if (spotData.routes && Array.isArray(spotData.routes)) existingRoutes = [...spotData.routes];
+    else if (spotData.routeNum && spotData.name) existingRoutes = [{ num: spotData.routeNum, name: spotData.name }];
 
                     if (pendingUpdate.isReplacement) existingRoutes = [];
                     
@@ -2006,7 +2070,6 @@ if (document.getElementById('btn-submit-update')) {
 
                 existingVoters[currentDeviceToken] = true;
 
-                // Push change alert to Cloudflare Worker
                 if (pendingUpdate.isReplacement && !isNewRoute && routeOldBus && routeOldBus !== selectedBus) {
                     const notifId = Date.now().toString() + "_" + Math.random().toString(36).substr(2, 4);
                     notificationUpdates[notifId] = {
@@ -2019,7 +2082,9 @@ if (document.getElementById('btn-submit-update')) {
                     fetch('https://seenmybus-notifier.rahmansaif822.workers.dev/broadcast', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ title: `Bus Changed for ${targetRoute.name}`, message: `Bus for ${targetRoute.name} has changed to Bus ${selectedBus}.`, routeName: targetRoute.name, sender: currentDeviceToken })
-                    }).catch(e => {});
+                    })
+                    .then(res => console.log("Cloudflare Push Triggered. Status:", res.status))
+                    .catch(e => console.error("Cloudflare Push Request Failed:", e));
                 }
 
                 const combinedNums = existingRoutes.map(r => r.num).join(', ');
@@ -2037,8 +2102,11 @@ if (document.getElementById('btn-submit-update')) {
                     updatedBy: currentDeviceToken
                 };
             } else {
-                updates[`unassignedBuses/${targetSpot}`] = { busNo: selectedBus, updatedAt: timestamp, updatedBy: currentDeviceToken };
-            }
+    updates[`unassignedBuses/${targetSpot}`] = { busNo: selectedBus, updatedAt: timestamp, updatedBy: currentDeviceToken };
+    if (oldBusToVirtualize) {
+        updates[`activeBuses/${targetSpot}`] = null;
+    }
+}
 
             await update(ref(db), updates);
             if (Object.keys(notificationUpdates).length > 0) await update(ref(db, 'broadcastNotifications'), notificationUpdates);

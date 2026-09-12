@@ -89,6 +89,20 @@
     </div>
         
     <div id="app-container">
+
+        <!-- Push Notification Prompt Banner -->
+        <div id="notif-banner" class="hidden">
+            <h4>
+                <svg class="ui-icon" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg> 
+                Live Bus Alerts
+            </h4>
+            <p>Allow notifications to know instantly when your bus changes numbers.</p>
+            <div style="display:flex; gap:10px; margin-top:12px; width:100%;">
+                <button id="btn-dismiss-notif" class="btn-secondary" style="height:36px; font-size:13px; flex:1;">Later</button>
+                <button id="btn-allow-notif" class="btn-primary" style="height:36px; font-size:13px; flex:1;">Turn On</button>
+            </div>
+        </div>
+
         <!-- View mode pill switch -->
         <div class="view-mode-bar">
             <div class="view-mode-pill">
@@ -141,8 +155,8 @@
             </div>
 
             <div class="board-table">
-                <div class="board-th">
-                    <div>Route no</div><div>Destination</div><div>Bus no</div><div>Reported by</div>
+               <div class="board-th">
+                   <div>Route no</div><div>Destination</div><div>Bus no</div><div>Reported by</div>
                 </div>
                 <div id="board-grid"></div>
             </div>
@@ -406,7 +420,7 @@
             </div>
 
             <div class="tour-spotlight-step hidden" data-step="6">
-                <div class="tour-spotlight-card" style="bottom: 45%; left: 0; right: 0; margin: auto;">
+                <div class="tour-spotlight-card" style="bottom: 32%; left: 0; right: 0; margin: auto;">
                     <h4>2. Keep Map Accurate</h4>
                     <p>Tap the <b>"Yes"</b> or <b>"No"</b> button above to confirm if it's correct or incorrect. This community check filters out wrong updates!</p>
                     <button type="button" class="btn-tour-step-skip" onclick="window.nextTourStep()">Skip</button>
@@ -417,7 +431,7 @@
                 <div class="tour-spotlight-card" style="bottom: 40%; left: 0; right: 0; margin: auto;">
                     <h4>3. Search Routes</h4>
                     <p>Tap the <b>search bar</b> at the top of the screen to quickly filter the list. Try typing a route or bus no., then click Next!</p>
-                    <button type="button" class="btn-tour-step-skip" onclick="window.nextTourStep()">Skip</button>
+                    <button type="button" class="btn-tour-step-skip" onclick="window.nextTourStep()">Next</button>
                 </div>
             </div>
 
