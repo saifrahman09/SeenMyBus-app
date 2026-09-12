@@ -148,7 +148,7 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 const messaging = getMessaging(app);
 
-// Standard PWA Service Worker (Handles Offline & Caching)
+// Standard PWA Service Worker Registration (Unified)
 if ('serviceWorker' in navigator) {
     let refreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -298,11 +298,11 @@ async function loadUserRank() {
 async function registerFCMToken() {
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     try {
-        // Explicitly register the messaging SW to ensure background pushes map correctly
-        const fcmRegistration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
+        // Use the existing sw.js instead of spinning up a separate conflicting worker
+        const registration = await navigator.serviceWorker.ready;
         const fcmToken = await getToken(messaging, { 
             vapidKey: 'BPgf5onxNHlQiYFzQ3Q03IHvYKe22Yuu1JahIj9MQkvl5XwadaViZOAAVXCV_tmqhwWlq2vfZe1T0ybd9PGhLsI',
-            serviceWorkerRegistration: fcmRegistration
+            serviceWorkerRegistration: registration
         });
         if (fcmToken) {
             await set(ref(db, `fcmTokens/${currentDeviceToken}`), fcmToken);
@@ -318,7 +318,6 @@ function triggerPushBroadcast(routeName, oldBuses, newBuses, senderToken) {
     const oldB = oldBuses.filter(b => !newBuses.includes(b)).join(', ');
     const newB = newBuses.filter(b => !oldBuses.includes(b)).join(', ');
     
-    // Only dispatch notification if a new bus was introduced or replaced
     if (!newB) return; 
 
     const title = `Bus Changed for ${routeName}`;
@@ -495,6 +494,9 @@ function flipUnit(idPrefix, newVal) {
 }
 
 function updateLiveClock() {
+    // Optimization: Skip heavy DOM manipulation if board is hidden
+    if (currentDisplayMode !== 'BOARD') return;
+
     const now = new Date();
     const currentMins = now.getHours() * 60 + now.getMinutes();
     const currentSecs = now.getSeconds();
@@ -541,14 +543,12 @@ function updateLiveClock() {
     }
 }
 setInterval(updateLiveClock, 1000);
-updateLiveClock();
 
 function switchDisplayMode(mode) {
     if (appState === 'SELECTION') {
         appState = 'VIEW';
         if (selFooter) selFooter.classList.add('hidden');
         if (topBar) topBar.style.transform = `translateY(0)`;
-        setSheetTranslate(currentTranslate, true, 300);
         if (mapElement) { scale = 1.6; pointX = 0; pointY = 0; setTransform(); }
         renderMapSpots();
     }
@@ -560,6 +560,10 @@ function switchDisplayMode(mode) {
         if (mapContainer) mapContainer.style.display = 'block';
         if (draggableSheet) draggableSheet.style.display = 'flex';
         if (digitalBoardContainer) digitalBoardContainer.classList.add('hidden');
+        
+        // Ensure bottom sheet correctly snaps to base height on switch
+        setSheetTranslate(0, true, 300);
+
         if (mapElement && appState === 'VIEW') renderMapSpots();
         
         isBoardEditMode = false;
@@ -579,6 +583,7 @@ function switchDisplayMode(mode) {
         if (fixedFooter) fixedFooter.classList.add('hidden');
         hideValidationCard();
         hideUnassignedTooltip();
+        updateLiveClock(); // Force immediate clock render when switching
         renderDigitalBoard();
     }
 }
@@ -662,8 +667,8 @@ if (boardEditFab) {
                     continue; // Skip processing this specific route edit since consensus isn't met
                 }
 
-                // Consensus Met: Apply changes and trigger push notification
-                if (newBusNos.length > 0) {
+                // Consensus Met: Apply changes and trigger push notification (Only if an old bus is replaced)
+                if (oldBusNos.length > 0 && newBusNos.length > 0) {
                     triggerPushBroadcast(route.name, oldBusNos, newBusNos, currentDeviceToken);
                 }
 
@@ -952,37 +957,37 @@ function animateBusTransition(busNo, fromSpotId, toSpotId) {
     }, 1300);
 }
 
-let busDataTimeout = null;
+// Optimization: Removed redundant DB polling to prevent lag. Realtime listeners handle all updates natively.
 onValue(ref(db, 'activeBuses'), (snapshot) => { 
-    if (busDataTimeout) clearTimeout(busDataTimeout);
-    busDataTimeout = setTimeout(() => {
-        try { handleBusesData(snapshot.val()); } catch (err) { console.warn(err); } 
-    }, 250); 
+    try { handleBusesData(snapshot.val()); } catch (err) { console.warn(err); } 
 });
 
-let unDataTimeout = null;
 onValue(ref(db, 'unassignedBuses'), (snapshot) => { 
-    if (unDataTimeout) clearTimeout(unDataTimeout);
-    unDataTimeout = setTimeout(() => {
-        try { handleUnassignedData(snapshot.val()); } catch (e) { console.warn(e); } 
-    }, 250);
+    try { handleUnassignedData(snapshot.val()); } catch (e) { console.warn(e); } 
 });
 
-const clientJitter = Math.floor(Math.random() * 15000);
-setTimeout(() => {
-    setInterval(async () => {
-        if (appState === 'VIEW' && !window.isTourActive) {
-            try {
-                const [snapActive, snapUn] = await Promise.all([
-                    get(ref(db, 'activeBuses')),
-                    get(ref(db, 'unassignedBuses'))
-                ]);
-                if (snapActive.exists()) handleBusesData(snapActive.val());
-                if (snapUn.exists()) handleUnassignedData(snapUn.val());
-            } catch (e) {}
+// Lightweight Local Sweeper: Checks for expired buses every 60s without hitting the network
+setInterval(() => {
+    if (appState === 'VIEW' && !window.isTourActive && activeBuses.length > 0) {
+        const now = new Date();
+        let needsRefresh = false;
+
+        // Check if any currently displayed bus has expired
+        activeBuses.forEach(bus => {
+            if (shouldPurgeSpot(bus, now)) {
+                needsRefresh = true;
+            }
+        });
+
+        // If something expired, just trigger a local re-render (Firebase will sync naturally when someone updates)
+        if (needsRefresh) {
+            activeBuses = activeBuses.filter(bus => !shouldPurgeSpot(bus, now));
+            if (mapElement && currentDisplayMode === 'MAP') renderMapSpots();
+            renderList(getFilteredBuses());
+            if (!isBoardEditMode && currentDisplayMode === 'BOARD') renderDigitalBoard();
         }
-    }, 60000);
-}, clientJitter);
+    }
+}, 60000);
 
 window.triggerPostTourConsents = function() {
     const consentBanner = document.getElementById('consent-banner');
@@ -1127,23 +1132,15 @@ function handleBusesData(data) {
     }
 
     const now = new Date();
-    const dbPurgeUpdates = {};
-    let hasPurge = false;
     const keptSpots = [];
 
+    // Optimization: Filter out stale spots locally without triggering mass database deletion events
     validSpots.forEach(spotId => {
         const item = data[spotId];
-        if (shouldPurgeSpot(item, now)) {
-            dbPurgeUpdates[`activeBuses/${spotId}`] = null;
-            hasPurge = true;
-        } else {
+        if (!shouldPurgeSpot(item, now)) {
             keptSpots.push(spotId);
         }
     });
-
-    if (hasPurge) {
-        update(ref(db), dbPurgeUpdates).catch(e => console.warn("Active bus purge sync:", e));
-    }
 
     if (keptSpots.length === 0) {
         if (lastActiveDataSignature === '') return;
@@ -1208,25 +1205,15 @@ function handleUnassignedData(data) {
     }
 
     const now = new Date();
-    const dbPurgeUpdates = {};
-    let hasPurge = false;
-
     const validSpots = Object.keys(data).filter(k => k.startsWith('spot-'));
     const keptSpots = [];
 
     validSpots.forEach(spotId => {
         const item = data[spotId];
-        if (shouldPurgeSpot(item, now)) {
-            dbPurgeUpdates[`unassignedBuses/${spotId}`] = null;
-            hasPurge = true;
-        } else {
+        if (!shouldPurgeSpot(item, now)) {
             keptSpots.push(spotId);
         }
     });
-
-    if (hasPurge) {
-        update(ref(db), dbPurgeUpdates).catch(e => console.warn("Unassigned bus purge sync:", e));
-    }
 
     const signature = createUnassignedDataSignature(data);
     if (signature === lastUnassignedDataSignature) return;
@@ -1648,6 +1635,7 @@ function renderList(buses) {
     const container = document.getElementById('bus-list');
     if (!container) return;
 
+    // RESTORE THE VIRTUAL FILTER: Hides evicted "ghost" buses and unmapped board buses
     const physicalBuses = buses.filter(b => !b.spotId.startsWith('virtual-'));
     const groupedRoutes = getGroupedRoutes(physicalBuses);
     const emptyState = document.getElementById('empty-state');
@@ -1658,6 +1646,7 @@ function renderList(buses) {
         if (emptyState) emptyState.classList.remove('hidden');
         return;
     }
+
     if (emptyState) emptyState.classList.add('hidden');
     const orderedRoutes = buildStableListOrder(groupedRoutes);
     const fragment = document.createDocumentFragment();
@@ -1728,7 +1717,7 @@ if (searchInput) {
 function focusOnSpot(spotId) {
     if (!mapElement || !mapContainer) return;
     const spotGroup = document.getElementById(spotId);
-    if (!spotGroup) return;
+    if (!spotGroup) return; // Safely aborts focus animation if spot is virtual
     const circle = spotGroup.querySelector('circle');
     if (!circle) return;
     
@@ -2045,7 +2034,7 @@ if (document.getElementById('btn-submit-update')) {
                         await update(ref(db), updates);
                         alert(`Spot is verified. Proposal to park Bus ${selectedBus} saved. Needs ${consensus.reqVotes - consensus.currentVotes} more vote(s) to override.`);
                         document.getElementById('btn-submit-update').disabled = false;
-                        return; // Stop update
+                        return; 
                     } else if (consensus.clearProposals) {
                         updates[`activeBuses/${targetSpot}/proposals`] = null;
                     }
