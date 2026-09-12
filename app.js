@@ -343,8 +343,8 @@ onMessage(messaging, async (payload) => {
         const registration = await navigator.serviceWorker.ready;
         await registration.showNotification(title, {
             body: body,
-            icon: './icon-192.png',
-            badge: './app-icon.png',
+            icon: './badge-icon.png',
+            badge: './badge-icon.png',
             vibrate: [100, 50, 100],
             data: { url: window.location.origin + '/' }
         });

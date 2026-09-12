@@ -42,8 +42,8 @@ messaging.onBackgroundMessage((payload) => {
     const title = payload.notification?.title || payload.data?.title || 'SeenMyBus Alert';
     const options = {
         body: payload.notification?.body || payload.data?.message || payload.data?.body || '',
-        icon: './icon-192.png',
-        badge: './app-icon.png',
+        icon: './badge-icon.png',
+        badge: './badge-icon.png',
         vibrate: [100, 50, 100],
         data: { url: self.location.origin + '/' }
     };
