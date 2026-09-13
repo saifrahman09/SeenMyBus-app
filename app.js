@@ -121,6 +121,23 @@ const dragHandle = document.getElementById('drag-handle-area');
 const contentWrapper = document.getElementById('sheet-content-wrapper');
 const busListScroll = document.getElementById('bus-list');
 
+// Safe Storage Wrapper to prevent fatal crashes if cookies/storage are disabled
+const safeStorage = {
+    memory: {},
+    getItem(key) {
+        try { return window.localStorage.getItem(key) || this.memory[key] || null; }
+        catch (e) { return this.memory[key] || null; }
+    },
+    setItem(key, value) {
+        try { window.localStorage.setItem(key, value); }
+        catch (e) { this.memory[key] = String(value); }
+    },
+    removeItem(key) {
+        try { window.localStorage.removeItem(key); }
+        catch (e) { delete this.memory[key]; }
+    }
+};
+
 // =============================================================================
 // 2. INITIALIZATION & FIREBASE SETUP
 // =============================================================================
@@ -175,7 +192,7 @@ if ('serviceWorker' in navigator) {
 function checkAdminVisibility() {
     const adminLink = document.getElementById('admin-portal-link');
     const adminTopBtn = document.getElementById('admin-top-btn');
-    if (localStorage.getItem('smb_admin_active') === 'true') {
+    if (safeStorage.getItem('smb_admin_active') === 'true') {
         if (adminLink) adminLink.classList.remove('hidden');
         if (adminTopBtn) adminTopBtn.classList.remove('hidden');
     } else {
@@ -230,10 +247,10 @@ window.addEventListener('appinstalled', () => {
 });
 
 function getDeviceToken() {
-    let token = localStorage.getItem('smb_device_token');
+    let token = safeStorage.getItem('smb_device_token');
     if (!token) {
         token = 'dev_' + Math.random().toString(36).substr(2, 9);
-        localStorage.setItem('smb_device_token', token);
+        safeStorage.setItem('smb_device_token', token);
     }
     return token;
 }
@@ -359,10 +376,10 @@ function initNotificationSystem() {
         registerFCMToken();
         return;
     }
-    const isAsked = localStorage.getItem('smb_notif_asked');
+    const isAsked = safeStorage.getItem('smb_notif_asked');
     if (!isAsked && "Notification" in window && Notification.permission === 'default') {
         setTimeout(() => { 
-            if (!localStorage.getItem('smb_notif_asked') && notifBanner) {
+            if (!safeStorage.getItem('smb_notif_asked') && notifBanner) {
                 notifBanner.classList.remove('hidden'); 
             }
         }, 8000);
@@ -373,7 +390,7 @@ function initNotificationSystem() {
             try {
                 const permission = await Notification.requestPermission();
                 if (permission === 'granted') {
-                    localStorage.setItem('smb_notif_asked', 'true');
+                    safeStorage.setItem('smb_notif_asked', 'true');
                     if (notifBanner) notifBanner.classList.add('hidden');
                     await registerFCMToken();
                 }
@@ -383,7 +400,7 @@ function initNotificationSystem() {
     const dismissBtn = document.getElementById('btn-dismiss-notif');
     if (dismissBtn) {
         dismissBtn.onclick = () => {
-            localStorage.setItem('smb_notif_asked', 'true');
+            safeStorage.setItem('smb_notif_asked', 'true');
             if (notifBanner) notifBanner.classList.add('hidden');
         };
     }
@@ -800,7 +817,7 @@ function renderDigitalBoard() {
         }
 
         card.innerHTML = `
-            <div class="b-r-num">${route.num.padStart(2, '0')}</div>
+            <div class="b-r-num">${String(route.num).padStart(2, '0')}</div>
             <div class="b-r-loc">${locHtml}</div>
             ${busCellHtml}
             <div class="b-r-users">${displayUsers}</div>
@@ -991,24 +1008,24 @@ setInterval(() => {
 
 window.triggerPostTourConsents = function() {
     const consentBanner = document.getElementById('consent-banner');
-    if (consentBanner && !localStorage.getItem('aju_consent')) consentBanner.classList.remove('hidden');
+    if (consentBanner && !safeStorage.getItem('aju_consent')) consentBanner.classList.remove('hidden');
     initNotificationSystem();
 };
 
 const acceptBtn = document.getElementById('btn-accept-cookies');
 if (acceptBtn) {
     acceptBtn.onclick = () => {
-        localStorage.setItem('aju_consent', 'true');
+        safeStorage.setItem('aju_consent', 'true');
         const consentBanner = document.getElementById('consent-banner');
         if (consentBanner) consentBanner.classList.add('hidden');
         initNotificationSystem();
         loadUserRank();
     };
 }
-if (localStorage.getItem('smb_tour_completed')) window.triggerPostTourConsents();
+if (safeStorage.getItem('smb_tour_completed')) window.triggerPostTourConsents();
 loadUserRank();
 
-if (devNoteDot && localStorage.getItem('smb_dev_note_read') === 'true') {
+if (devNoteDot && safeStorage.getItem('smb_dev_note_read') === 'true') {
     devNoteDot.style.display = 'none';
 }
 
@@ -1016,7 +1033,7 @@ if (devNoteToggle && devNoteCard) {
     devNoteToggle.onclick = () => { 
         devNoteCard.classList.toggle('collapsed'); 
         if (devNoteDot) devNoteDot.style.display = 'none';
-        localStorage.setItem('smb_dev_note_read', 'true');
+        safeStorage.setItem('smb_dev_note_read', 'true');
     }; 
 }
 
@@ -2325,7 +2342,7 @@ window.forceTourRefresh = async function() {
 };
 
 function checkFirstVisitOnboarding() {
-    if (!localStorage.getItem('smb_tour_completed')) setTimeout(() => showTourStep(1), 1000);
+    if (!safeStorage.getItem('smb_tour_completed')) setTimeout(() => showTourStep(1), 1000);
 }
 
 window.showTourStep = function(stepNum) {
@@ -2460,7 +2477,7 @@ window.nextTourStep = function() {
 window.skipTour = function() { window.finishTour(); };
 
 window.finishTour = function() {
-    localStorage.setItem('smb_tour_completed', 'true');
+    safeStorage.setItem('smb_tour_completed', 'true');
     window.isTourActive = false;
     tourAbortController.abort();
     
