@@ -87,6 +87,7 @@ self.addEventListener('fetch', event => {
     // Bypass external APIs and Websockets
     if (
         url.origin !== self.location.origin ||
+        url.pathname.startsWith('/_vercel') ||
         url.hostname.includes('firebasedatabase.app') ||
         url.hostname.includes('googleapis.com') ||
         url.hostname.includes('gstatic.com') ||
