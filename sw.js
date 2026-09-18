@@ -39,11 +39,17 @@ const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
     console.log('[sw.js] Background Push Received:', payload);
-    const title = payload.notification?.title || payload.data?.title || 'SeenMyBus Alert';
+    // If payload contains notification, Chrome handles it natively.
+    // Only display manually if notification payload is missing.
+    if (payload.notification) return;
+
+    const title = payload.data?.title || 'SeenMyBus Alert';
     const options = {
-        body: payload.notification?.body || payload.data?.message || payload.data?.body || '',
-        icon: './badge-icon.png',
-        badge: './badge-icon.png',
+        body: payload.data?.message || payload.data?.body || '',
+        icon: './notif-icon.png',
+        badge: './notif-icon.png',
+        tag: 'seenmybus-update', // Collapses multiple alerts into one
+        renotify: true,
         vibrate: [100, 50, 100],
         data: { url: self.location.origin + '/' }
     };
