@@ -75,8 +75,8 @@ let lastUnassignedDataSignature = null;
 let mapViewportInitialized = false;
 let routeNotificationCooldown = {};
 
-const PIN_ICON_OUTLINE = '<svg class="pin-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path></svg>';
-const PIN_ICON_FILLED = '<svg class="pin-icon pinned" width="16" height="16" viewBox="0 0 24 24" fill="#FCB041" stroke="#FCB041" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path></svg>';
+const PIN_OUTLINE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path></svg>';
+const PIN_FILLED = '<svg width="20" height="20" viewBox="0 0 24 24" fill="#FCB041" stroke="#FCB041" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:none;"><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path></svg>';
 
 window.ignoreMapTap = false; 
 
@@ -321,7 +321,11 @@ function isRoutePinned(routeNum) {
     return getPinnedRoutes().includes(normalizePinnedRouteNum(routeNum));
 }
 
-async function syncPinnedRoutesToCloud(pinnedArray) {
+function getNotifPinnedOnly() {
+    return safeStorage.getItem('smb_notif_pinned_only') === 'true';
+}
+
+async function syncPreferencesToCloud() {
     if (!currentDeviceToken) return;
     try {
         const tokenRef = ref(db, `fcmTokens/${currentDeviceToken}`);
@@ -330,42 +334,106 @@ async function syncPinnedRoutesToCloud(pinnedArray) {
         const existingToken = typeof stored === 'string' ? stored : stored?.token;
         await update(tokenRef, {
             ...(existingToken ? { token: existingToken } : {}),
-            pinnedRoutes: pinnedArray
+            pinnedRoutes: getNotifPinnedOnly() ? getPinnedRoutes() : []
         });
     } catch (err) {
-        console.error('Pinned route cloud sync failed:', err);
+        console.error('Preference cloud sync failed:', err);
     }
 }
 
-function toggleRoutePin(routeNum) {
-    const cleanNum = normalizePinnedRouteNum(routeNum);
-    const pinned = getPinnedRoutes();
-    const nextPinned = pinned.includes(cleanNum)
-        ? pinned.filter(num => num !== cleanNum)
-        : [...pinned, cleanNum];
-    safeStorage.setItem('smb_pinned_routes', JSON.stringify(nextPinned));
-    void syncPinnedRoutesToCloud(nextPinned);
+function refreshPinnedUI() {
     renderDigitalBoard();
     renderList(getFilteredBuses());
 }
 
-function createRoutePinButton(routeNum) {
-    const pinned = isRoutePinned(routeNum);
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'btn-pin-route';
-    button.title = pinned ? 'Unpin route' : 'Pin route to top and notifications';
-    button.setAttribute('aria-label', button.title);
-    button.setAttribute('aria-pressed', String(pinned));
-    button.style.cssText = 'border:0;background:transparent;cursor:pointer;padding:5px;display:inline-flex;align-items:center;justify-content:center;flex:none;';
-    button.innerHTML = pinned ? PIN_ICON_FILLED : PIN_ICON_OUTLINE;
-    button.addEventListener('click', event => {
-        event.preventDefault();
-        event.stopPropagation();
-        toggleRoutePin(routeNum);
-    });
-    return button;
+function updatePinToggleVisuals(checked) {
+    const bg = document.getElementById('slider-bg');
+    const knob = document.getElementById('slider-knob');
+    if (bg) bg.style.backgroundColor = checked ? '#815FD7' : '#cbd5e1';
+    if (knob) knob.style.transform = checked ? 'translateX(20px)' : 'translateX(0)';
 }
+
+function openPinModal() {
+    const modal = document.getElementById('pin-routes-modal');
+    const listEl = document.getElementById('pin-routes-list');
+    if (!modal || !listEl) return;
+
+    const notifContainer = document.getElementById('pin-notif-container');
+    const toggle = document.getElementById('toggle-notif-pinned');
+    const granted = 'Notification' in window && Notification.permission === 'granted';
+    if (notifContainer) notifContainer.classList.toggle('hidden', !granted);
+    if (toggle) {
+        toggle.checked = getNotifPinnedOnly();
+        updatePinToggleVisuals(toggle.checked);
+    }
+
+    const pinned = getPinnedRoutes();
+    const rank = route => {
+        const idx = pinned.indexOf(normalizePinnedRouteNum(route.num));
+        return idx === -1 ? Infinity : idx;
+    };
+    const sorted = [...ALL_ROUTES].sort((a, b) => {
+        const ra = rank(a), rb = rank(b);
+        if (ra === rb) return 0;
+        return ra === Infinity ? 1 : rb === Infinity ? -1 : ra - rb;
+    });
+
+    listEl.innerHTML = '';
+    sorted.forEach(route => {
+        const isPinned = pinned.includes(normalizePinnedRouteNum(route.num));
+        const row = document.createElement('div');
+        row.style.cssText = `display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;cursor:pointer;border:1.5px solid ${isPinned ? '#FCB041' : '#e2e8f0'};background:${isPinned ? '#FFFBEB' : '#fff'};`;
+        const label = document.createElement('div');
+        label.style.cssText = 'flex:1;min-width:0;font-size:14px;font-weight:700;color:#1E1B4B;';
+        label.textContent = `Route ${String(route.num).padStart(2, '0')} - ${route.name}`;
+        const icon = document.createElement('span');
+        icon.style.cssText = 'display:inline-flex;flex:none;';
+        icon.innerHTML = isPinned ? PIN_FILLED : PIN_OUTLINE;
+        row.append(label, icon);
+        row.addEventListener('click', () => {
+            const cleanNum = normalizePinnedRouteNum(route.num);
+            let next = getPinnedRoutes();
+            if (next.includes(cleanNum)) next = next.filter(n => n !== cleanNum);
+            else next.unshift(cleanNum);
+            safeStorage.setItem('smb_pinned_routes', JSON.stringify(next));
+            void syncPreferencesToCloud();
+            openPinModal();
+            refreshPinnedUI();
+        });
+        listEl.appendChild(row);
+    });
+
+    modal.classList.remove('hidden');
+}
+
+function closePinModal() {
+    const modal = document.getElementById('pin-routes-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+(function initPinModal() {
+    const menuLink = document.getElementById('menu-pin-routes');
+    const closeBtn = document.getElementById('btn-close-pin-modal');
+    const modal = document.getElementById('pin-routes-modal');
+    const toggle = document.getElementById('toggle-notif-pinned');
+    if (menuLink) {
+        menuLink.addEventListener('click', e => {
+            e.preventDefault();
+            if (sidePanel) sidePanel.classList.remove('open');
+            if (sideOverlay) sideOverlay.classList.add('hidden');
+            openPinModal();
+        });
+    }
+    if (closeBtn) closeBtn.addEventListener('click', closePinModal);
+    if (modal) modal.addEventListener('click', e => { if (e.target === modal) closePinModal(); });
+    if (toggle) {
+        toggle.addEventListener('change', () => {
+            safeStorage.setItem('smb_notif_pinned_only', toggle.checked ? 'true' : 'false');
+            updatePinToggleVisuals(toggle.checked);
+            void syncPreferencesToCloud();
+        });
+    }
+})();
 
 const connectedRef = ref(db, ".info/connected");
 onValue(connectedRef, (snap) => {
@@ -439,7 +507,7 @@ async function registerFCMToken() {
             await update(tokenRef, {
                 ...(typeof stored === 'object' && stored !== null ? stored : {}),
                 token: fcmToken,
-                pinnedRoutes: getPinnedRoutes()
+                pinnedRoutes: getNotifPinnedOnly() ? getPinnedRoutes() : []
             });
             console.log("FCM Token registered securely.");
         }
@@ -505,7 +573,7 @@ function triggerPushBroadcast(routeName, oldBuses, newBuses, senderToken, routeN
 
 onMessage(messaging, async (payload) => {
     console.log(">>> FCM FOREGROUND PACKET ARRIVED:", payload);
-    const userPinned = getPinnedRoutes();
+    const userPinned = getNotifPinnedOnly() ? getPinnedRoutes() : [];
     const incomingRouteNum = payload.data?.routeNum || payload.notification?.routeNum;
     if (userPinned.length > 0 &&
         (!incomingRouteNum || !userPinned.includes(normalizePinnedRouteNum(incomingRouteNum)))) {
@@ -1096,16 +1164,11 @@ function renderDigitalBoard() {
         }
 
         card.innerHTML = `
-            <div class="b-r-num">${String(route.num).padStart(2, '0')}</div>
-            <div class="b-r-loc" style="padding-right:24px;">${locHtml}</div>
+            <div class="b-r-num" style="display: flex; align-items: center; justify-content: center; gap: 4px;">${isRoutePinned(route.num) ? PIN_FILLED : ''}<span>${String(route.num).padStart(2, '0')}</span></div>
+            <div class="b-r-loc">${locHtml}</div>
             ${busCellHtml}
             <div class="b-r-users">${displayUsers}</div>
         `;
-        const pinButton = createRoutePinButton(route.num);
-        pinButton.style.position = 'absolute';
-        pinButton.style.right = '0';
-        pinButton.style.top = '0';
-        card.querySelector('.b-r-loc').appendChild(pinButton);
 
         if (isBoardEditMode) {
             const inputEl = card.querySelector('input');
@@ -1976,7 +2039,8 @@ function renderList(buses) {
         }
 
         div.innerHTML = `
-            <div class="bus-info-left">
+            <div class="bus-info-left" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                ${isRoutePinned(item.routeNum) ? PIN_FILLED : ''}
                 <span class="route-badge">Route ${item.routeNum}</span>
                 <span class="route-name">${item.name}</span>
                 ${subtextHtml}
@@ -1984,7 +2048,6 @@ function renderList(buses) {
             <div class="bus-badge-group"></div>
         `;
         const badgeGroup = div.querySelector('.bus-badge-group');
-        badgeGroup.appendChild(createRoutePinButton(item.routeNum));
         item.buses.forEach(bObj => {
             const badge = document.createElement('div');
             badge.className = 'bus-circle-badge';
