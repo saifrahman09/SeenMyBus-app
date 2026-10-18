@@ -100,11 +100,11 @@ const totalTourSteps = 12;
 window.isTourActive = false;
 
 const TIER_DATA = [
-    { level: 1, min: 0, max: 29, name: "Level 1 • Rookie", short: "Rookie", img: "./images/badges/Level 1 Rookie Badge.png" },
-    { level: 2, min: 30, max: 74, name: "Level 2 • Active Contributor", short: "Active Contributor", img: "./images/badges/Level 2 Contributor Badge.png" },
-    { level: 3, min: 75, max: 149, name: "Level 3 • Scout", short: "Scout", img: "./images/badges/Level 3 Scout Badge.png" },
-    { level: 4, min: 150, max: 299, name: "Level 4 • Spotter Pro", short: "Spotter Pro", img: "./images/badges/Level 4 Spotter Pro Badge.png" },
-    { level: 5, min: 300, max: Infinity, name: "Level 5 • Campus Legend", short: "Campus Legend", img: "./images/badges/Level 5 Campus Legend Badge.png" }
+    { level: 1, min: 0, max: 29, name: "Level 1 • Rookie", short: "Rookie", img: "./images/badges/Level 1 Rookie Badge.webp" },
+    { level: 2, min: 30, max: 74, name: "Level 2 • Active Contributor", short: "Active Contributor", img: "./images/badges/Level 2 Contributor Badge.webp" },
+    { level: 3, min: 75, max: 149, name: "Level 3 • Scout", short: "Scout", img: "./images/badges/Level 3 Scout Badge.webp" },
+    { level: 4, min: 150, max: 299, name: "Level 4 • Spotter Pro", short: "Spotter Pro", img: "./images/badges/Level 4 Spotter Pro Badge.webp" },
+    { level: 5, min: 300, max: Infinity, name: "Level 5 • Campus Legend", short: "Campus Legend", img: "./images/badges/Level 5 Campus Legend Badge.webp" }
 ];
 window.currentUserTierInfo = null;
 let tourAbortController = new AbortController();
