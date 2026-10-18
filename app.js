@@ -305,11 +305,19 @@ function normalizePinnedRouteNum(routeNum) {
     return value ? value.padStart(2, '0') : '';
 }
 
+// A pin identifies one route + destination ("02|telco (suraj petrol pump)"), since route numbers repeat.
+function getRoutePinKey(routeNum, routeName) {
+    const num = normalizePinnedRouteNum(routeNum);
+    const name = normalizeRouteName(routeName).toLowerCase();
+    return num && name ? `${num}|${name}` : '';
+}
+
 function getPinnedRoutes() {
     try {
         const stored = JSON.parse(safeStorage.getItem('smb_pinned_routes') || '[]');
+        // Legacy number-only pins (no destination) are ignored.
         return Array.isArray(stored)
-            ? [...new Set(stored.map(normalizePinnedRouteNum).filter(Boolean))]
+            ? [...new Set(stored.filter(k => typeof k === 'string' && k.includes('|')))]
             : [];
     } catch (err) {
         console.warn('Unable to parse pinned routes:', err);
@@ -317,8 +325,9 @@ function getPinnedRoutes() {
     }
 }
 
-function isRoutePinned(routeNum) {
-    return getPinnedRoutes().includes(normalizePinnedRouteNum(routeNum));
+function isRoutePinned(routeNum, routeName) {
+    const key = getRoutePinKey(routeNum, routeName);
+    return !!key && getPinnedRoutes().includes(key);
 }
 
 function getNotifPinnedOnly() {
@@ -369,7 +378,7 @@ function openPinModal() {
 
     const pinned = getPinnedRoutes();
     const rank = route => {
-        const idx = pinned.indexOf(normalizePinnedRouteNum(route.num));
+        const idx = pinned.indexOf(getRoutePinKey(route.num, route.name));
         return idx === -1 ? Infinity : idx;
     };
     const sorted = [...ALL_ROUTES].sort((a, b) => {
@@ -380,7 +389,8 @@ function openPinModal() {
 
     listEl.innerHTML = '';
     sorted.forEach(route => {
-        const isPinned = pinned.includes(normalizePinnedRouteNum(route.num));
+        const pinKey = getRoutePinKey(route.num, route.name);
+        const isPinned = pinned.includes(pinKey);
         const row = document.createElement('div');
         row.style.cssText = `display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:14px;cursor:pointer;border:1.5px solid ${isPinned ? '#FCB041' : '#e2e8f0'};background:${isPinned ? '#FFFBEB' : '#fff'};`;
         const label = document.createElement('div');
@@ -391,10 +401,9 @@ function openPinModal() {
         icon.innerHTML = isPinned ? PIN_FILLED : PIN_OUTLINE;
         row.append(label, icon);
         row.addEventListener('click', () => {
-            const cleanNum = normalizePinnedRouteNum(route.num);
             let next = getPinnedRoutes();
-            if (next.includes(cleanNum)) next = next.filter(n => n !== cleanNum);
-            else next.unshift(cleanNum);
+            if (next.includes(pinKey)) next = next.filter(n => n !== pinKey);
+            else next.unshift(pinKey);
             safeStorage.setItem('smb_pinned_routes', JSON.stringify(next));
             void syncPreferencesToCloud();
             openPinModal();
@@ -524,7 +533,7 @@ function triggerPushBroadcast(routeName, oldBuses, newBuses, senderToken, routeN
     if (!newB) return; 
 
     const cleanRouteNum = normalizePinnedRouteNum(routeNum);
-    const routeKey = cleanRouteNum || String(routeNum ?? routeName);
+    const routeKey = getRoutePinKey(routeNum, routeName) || cleanRouteNum || String(routeNum ?? routeName);
     const isVerified = Number(usersCount) >= 2;
     let cooldowns = routeNotificationCooldown;
     try {
@@ -575,8 +584,9 @@ onMessage(messaging, async (payload) => {
     console.log(">>> FCM FOREGROUND PACKET ARRIVED:", payload);
     const userPinned = getNotifPinnedOnly() ? getPinnedRoutes() : [];
     const incomingRouteNum = payload.data?.routeNum || payload.notification?.routeNum;
+    const incomingRouteName = payload.data?.routeName || '';
     if (userPinned.length > 0 &&
-        (!incomingRouteNum || !userPinned.includes(normalizePinnedRouteNum(incomingRouteNum)))) {
+        !userPinned.includes(getRoutePinKey(incomingRouteNum, incomingRouteName))) {
         return;
     }
     const title = payload.notification?.title || payload.data?.title || 'SeenMyBus Alert';
@@ -1118,7 +1128,7 @@ function renderDigitalBoard() {
     boardGridEl.innerHTML = '';
 
     const orderedRoutes = [...ALL_ROUTES].sort((a, b) =>
-        Number(isRoutePinned(b.num)) - Number(isRoutePinned(a.num))
+        Number(isRoutePinned(b.num, b.name)) - Number(isRoutePinned(a.num, a.name))
     );
     orderedRoutes.forEach(route => {
         const assignedBuses = [];
@@ -1164,7 +1174,7 @@ function renderDigitalBoard() {
         }
 
         card.innerHTML = `
-            <div class="b-r-num" style="display: flex; align-items: center; justify-content: center; gap: 4px;">${isRoutePinned(route.num) ? PIN_FILLED : ''}<span>${String(route.num).padStart(2, '0')}</span></div>
+            <div class="b-r-num" style="display: flex; align-items: center; justify-content: center; gap: 4px;">${isRoutePinned(route.num, route.name) ? PIN_FILLED : ''}<span>${String(route.num).padStart(2, '0')}</span></div>
             <div class="b-r-loc">${locHtml}</div>
             ${busCellHtml}
             <div class="b-r-users">${displayUsers}</div>
@@ -1967,7 +1977,7 @@ function buildStableListOrder(groupedRoutes) {
     if (topRouteKey && availableKeys.has(topRouteKey)) listOrderKeys = [topRouteKey, ...listOrderKeys.filter(key => key !== topRouteKey)];
     const routeMap = new Map(groupedRoutes.map(item => [item.key, item]));
     return listOrderKeys.map(key => routeMap.get(key)).filter(Boolean).sort((a, b) =>
-        Number(isRoutePinned(b.routeNum)) - Number(isRoutePinned(a.routeNum))
+        Number(isRoutePinned(b.routeNum, b.name)) - Number(isRoutePinned(a.routeNum, a.name))
     );
 }
 
@@ -2040,7 +2050,7 @@ function renderList(buses) {
 
         div.innerHTML = `
             <div class="bus-info-left" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                ${isRoutePinned(item.routeNum) ? PIN_FILLED : ''}
+                ${isRoutePinned(item.routeNum, item.name) ? PIN_FILLED : ''}
                 <span class="route-badge">Route ${item.routeNum}</span>
                 <span class="route-name">${item.name}</span>
                 ${subtextHtml}
