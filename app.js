@@ -98,6 +98,15 @@ let isCurrentlyOffline = false;
 let currentTourStep = 1;
 const totalTourSteps = 12;
 window.isTourActive = false;
+
+const TIER_DATA = [
+    { level: 1, min: 0, max: 29, name: "Level 1 • Rookie", short: "Rookie", img: "./images/badges/Level 1 Rookie Badge.png" },
+    { level: 2, min: 30, max: 74, name: "Level 2 • Active Contributor", short: "Active Contributor", img: "./images/badges/Level 2 Contributor Badge.png" },
+    { level: 3, min: 75, max: 149, name: "Level 3 • Scout", short: "Scout", img: "./images/badges/Level 3 Scout Badge.png" },
+    { level: 4, min: 150, max: 299, name: "Level 4 • Spotter Pro", short: "Spotter Pro", img: "./images/badges/Level 4 Spotter Pro Badge.png" },
+    { level: 5, min: 300, max: Infinity, name: "Level 5 • Campus Legend", short: "Campus Legend", img: "./images/badges/Level 5 Campus Legend Badge.png" }
+];
+window.currentUserTierInfo = null;
 let tourAbortController = new AbortController();
 
 // Map Engine
@@ -481,14 +490,95 @@ async function addContributionPoints(points = 10) {
 }
 
 function updateRankDisplay(score) {
+    const safeScore = score || 0;
+    const currentTier = TIER_DATA.find(t => safeScore >= t.min && safeScore <= t.max) || TIER_DATA[0];
+    window.currentUserTierInfo = currentTier;
+
+    // Legacy text element is kept (hidden) for backward compatibility.
     const rankElem = document.getElementById('user-rank-display');
-    if (!rankElem) return;
-    let level = "Level 1 (Rookie)";
-    if (score >= 300) level = `Level 5 (Campus Legend)`;
-    else if (score >= 150) level = "Level 4 (Spotter Pro)";
-    else if (score >= 75) level = "Level 3 (Regular Scout)";
-    else if (score >= 30) level = "Level 2 (Active Contributor)";
-    rankElem.textContent = `Score: ${score} pts   ${level}`;
+    if (rankElem) rankElem.textContent = `Score: ${safeScore} pts   ${currentTier.name}`;
+
+    const card = document.getElementById('user-score-card');
+    if (card) {
+        const setText = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+        const fill = document.getElementById('sb-progress-fill');
+        const badge = document.getElementById('sb-badge-img');
+        card.classList.remove('hidden');
+        setText('sb-score-val', safeScore);
+        setText('sb-tier-name', currentTier.name);
+        if (badge && badge.getAttribute('src') !== currentTier.img) badge.src = currentTier.img;
+
+        if (currentTier.level === 5) {
+            if (fill) fill.style.width = '100%';
+            setText('sb-progress-text', `${safeScore} pts`);
+            setText('sb-next-level-text', 'Max Level');
+        } else {
+            const tierRange = (currentTier.max + 1) - currentTier.min;
+            const pct = Math.min(100, Math.max(0, ((safeScore - currentTier.min) / tierRange) * 100));
+            if (fill) fill.style.width = `${pct}%`;
+            setText('sb-progress-text', `${safeScore} / ${currentTier.max + 1}`);
+            setText('sb-next-level-text', 'Next Level');
+        }
+    }
+
+    // First run only records the tier, so existing users are not celebrated retroactively.
+    const storedTier = parseInt(safeStorage.getItem('smb_highest_tier') || '0', 10);
+    if (currentTier.level > storedTier && storedTier !== 0 && !window.isTourActive) {
+        showCelebrationModal(currentTier);
+    }
+    if (currentTier.level > storedTier) {
+        safeStorage.setItem('smb_highest_tier', currentTier.level.toString());
+    }
+}
+
+function showCelebrationModal(tier) {
+    const modal = document.getElementById('celebration-modal');
+    if (!modal) return;
+    const img = document.getElementById('celeb-badge-img');
+    const subtitle = document.getElementById('celeb-subtitle');
+    if (img) img.src = tier.img;
+    if (subtitle) subtitle.textContent = `You reached Level ${tier.level}`;
+    modal.classList.add('active');
+
+    const closeMod = () => modal.classList.remove('active');
+    const closeBtn = document.getElementById('btn-close-celeb');
+    const continueBtn = document.getElementById('btn-continue-celeb');
+    if (closeBtn) closeBtn.onclick = closeMod;
+    if (continueBtn) continueBtn.onclick = closeMod;
+}
+
+// Local reminder for Level 4+ users shortly before shift departures (called from the 60s sweeper).
+function maybeFireVipAlarm() {
+    const tierInfo = window.currentUserTierInfo;
+    if (!tierInfo || tierInfo.level < 4 || !("Notification" in window) || Notification.permission !== "granted") return;
+    if (!navigator.serviceWorker) return;
+
+    const now = new Date();
+    const todayStr = now.toDateString();
+    const hr = now.getHours();
+    const mn = now.getMinutes();
+    // 10 minutes before the 1:15 PM, 4:15 PM and 6:00 PM departures
+    const isTargetTime = (hr === 13 && mn === 5) || (hr === 16 && mn === 5) || (hr === 17 && mn === 50);
+    if (!isTargetTime || safeStorage.getItem('smb_last_vip_alarm') === todayStr) return;
+
+    const dateStr = `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    // Approximate fixed-date list; movable festivals (Holi, Diwali) change every year and need periodic updates.
+    const holidays = ['01-26', '03-03', '08-15', '10-02', '10-21', '11-08', '12-25'];
+    if (now.getDay() === 0 || holidays.includes(dateStr) || Math.random() >= 0.35) return;
+
+    safeStorage.setItem('smb_last_vip_alarm', todayStr);
+    navigator.serviceWorker.ready.then(reg => {
+        const nextShift = hr === 13 ? "1:15 PM" : hr === 16 ? "4:15 PM" : "6:00 PM";
+        return reg.showNotification(`Hello ${tierInfo.short}!`, {
+            body: `The ${nextShift} buses are lining up. Open the app and drop a quick live update. The campus is counting on your spotting skills.`,
+            icon: tierInfo.img,
+            badge: './badge-icon.png',
+            tag: 'seenmybus-vip-alarm',
+            vibrate: [100, 50, 100],
+            requireInteraction: true,
+            data: { url: window.location.origin + '/' }
+        });
+    }).catch(err => console.warn('VIP alarm failed:', err));
 }
 
 async function loadUserRank() {
@@ -1364,6 +1454,7 @@ setInterval(() => {
             if (!isBoardEditMode && currentDisplayMode === 'BOARD') renderDigitalBoard();
         }
     }
+    try { maybeFireVipAlarm(); } catch (err) { console.warn(err); }
 }, 60000);
 
 window.triggerPostTourConsents = function() {
