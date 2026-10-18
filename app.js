@@ -2049,10 +2049,12 @@ function renderList(buses) {
         }
 
         div.innerHTML = `
-            <div class="bus-info-left" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                ${isRoutePinned(item.routeNum, item.name) ? PIN_FILLED : ''}
+            <div class="bus-info-left">
                 <span class="route-badge">Route ${item.routeNum}</span>
-                <span class="route-name">${item.name}</span>
+                <span class="route-name" style="display: inline-flex; align-items: center; gap: 6px;">
+                    ${item.name}
+                    ${isRoutePinned(item.routeNum, item.name) ? PIN_OUTLINE.replace('<svg ', '<svg style="width: 16px; height: 16px; margin-bottom: 2px;" ') : ''}
+                </span>
                 ${subtextHtml}
             </div>
             <div class="bus-badge-group"></div>
