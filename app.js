@@ -9,7 +9,47 @@ import * as Config from "./config.js";
 export const CAMPUS_SHIFT_TIMINGS = ["13:15", "16:15", "18:00"];
 export const MAX_PARKING_STALE_MINUTES = 90;
 
-let ALL_ROUTES = Config.DEFAULT_ROUTES || Config.ALL_ROUTES || [];
+function normalizeRouteName(value) {
+    return String(value ?? '')
+        .replace(/chandih?\s*chowk/gi, 'Chandni Chowk')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function normalizeRouteDefinition(route) {
+    if (!route) return null;
+    const num = String(route.num ?? '').trim();
+    const name = normalizeRouteName(route.name);
+    return num && name ? { ...route, num, name } : null;
+}
+
+function normalizeRouteDefinitions(routes) {
+    return Array.isArray(routes)
+        ? routes.map(normalizeRouteDefinition).filter(Boolean)
+        : [];
+}
+
+function isRouteMatch(routeObj, targetNum, targetName) {
+    if (!routeObj) return false;
+    const numA = String(routeObj.num ?? '').trim();
+    const numB = String(targetNum ?? '').trim();
+    const cleanName = value => normalizeRouteName(value).toLowerCase();
+    return numA === numB && cleanName(routeObj.name) === cleanName(targetName);
+}
+
+function routeRecordMatches(routeRecord, targetRoute) {
+    if (!routeRecord || !targetRoute) return false;
+    if (Array.isArray(routeRecord.routes) && routeRecord.routes.length > 0) {
+        return routeRecord.routes.some(route => isRouteMatch(route, targetRoute.num, targetRoute.name));
+    }
+    return isRouteMatch(
+        { num: routeRecord.routeNum, name: routeRecord.name },
+        targetRoute.num,
+        targetRoute.name
+    );
+}
+
+let ALL_ROUTES = normalizeRouteDefinitions(Config.DEFAULT_ROUTES || Config.ALL_ROUTES || []);
 let ALL_BUSES = Config.DEFAULT_BUSES || Config.ALL_BUSES || Array.from({ length: 45 }, (_, i) => String(i + 1).padStart(2, '0'));
 let ALL_SPOTS = Config.DEFAULT_SPOTS || Config.ALL_SPOTS || Array.from({ length: 41 }, (_, i) => `spot-${String(i + 1).padStart(2, '0')}`);
 
@@ -22,7 +62,7 @@ let currentDisplayMode = 'MAP';
 let isBoardEditMode = false;
 let boardPendingEdits = {}; 
 
-let pendingUpdate = { route: null, busNo: null, spotId: null, isReplacement: false };
+let pendingUpdate = { route: null, busNo: null, spotId: null, sourceSpotId: null, isReplacement: false };
 let busLocationTracker = {}; 
 let routeLocationTracker = {};
 let currentSearchQuery = ''; 
@@ -453,9 +493,21 @@ function checkConsensus(existingSpot, newBusList, currentDeviceToken) {
 function updateRouteSelectDropdown() {
     if (!rSelect) return;
     const currentVal = rSelect.value;
-    rSelect.innerHTML = `<option value="" disabled selected>Select a Route</option><option value="UNASSIGNED">Parked on Campus (Route Unknown)</option>`;
+    rSelect.replaceChildren();
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.disabled = true;
+    placeholder.textContent = 'Select a Route';
+    rSelect.appendChild(placeholder);
+    const unassignedOption = document.createElement('option');
+    unassignedOption.value = 'UNASSIGNED';
+    unassignedOption.textContent = 'Parked on Campus (Route Unknown)';
+    rSelect.appendChild(unassignedOption);
     ALL_ROUTES.forEach(r => {
-        rSelect.innerHTML += `<option value="${r.num}|${r.name}">Route ${r.num} - ${r.name}</option>`;
+        const option = document.createElement('option');
+        option.value = `${r.num}|${r.name}`;
+        option.textContent = `Route ${r.num} - ${r.name}`;
+        rSelect.appendChild(option);
     });
     if (currentVal) rSelect.value = currentVal;
 }
@@ -465,7 +517,7 @@ onValue(ref(db, 'appConfig'), (snapshot) => {
     const configData = snapshot.val();
     if (!configData) return;
     if (Array.isArray(configData.routes) && configData.routes.length > 0) {
-        ALL_ROUTES = configData.routes;
+        ALL_ROUTES = normalizeRouteDefinitions(configData.routes);
         updateRouteSelectDropdown();
         if (currentDisplayMode === 'BOARD' && !isBoardEditMode) renderDigitalBoard();
     }
@@ -654,9 +706,7 @@ if (boardEditFab) {
 
                 Object.keys(activeData).forEach(index => {
                     const ab = activeData[index];
-                    const hasRoute = (ab.routes && Array.isArray(ab.routes))
-                        ? ab.routes.some(r => r.num === route.num && r.name === route.name)
-                        : (ab.routeNum === route.num && ab.name === route.name);
+                    const hasRoute = routeRecordMatches(ab, route);
 
                     if (hasRoute) {
                         existingSpotsForRoute.push(index);
@@ -774,9 +824,7 @@ function renderDigitalBoard() {
     ALL_ROUTES.forEach(route => {
         const assignedBuses = [];
         activeBuses.forEach(ab => {
-            const isAssigned = (ab.routes && Array.isArray(ab.routes))
-                ? ab.routes.some(r => r.num === route.num && r.name === route.name)
-                : (ab.routeNum === route.num && ab.name === route.name);
+            const isAssigned = routeRecordMatches(ab, route);
 
             if (isAssigned) {
                 ab.busNos.forEach(bNo => {
@@ -873,6 +921,7 @@ if (btnTooltipAssign) {
 
         pendingUpdate.busNo = busNo;
         pendingUpdate.spotId = spotId;
+        pendingUpdate.sourceSpotId = null;
         pendingUpdate.route = null;
         pendingUpdate.isReplacement = false;
 
@@ -886,7 +935,9 @@ if (btnTooltipAssign) {
             if (!selectedVal || selectedVal === "UNASSIGNED") return alert("Please select a route destination.");
             const [selNum, ...nameParts] = selectedVal.split('|');
             const selName = nameParts.join('|');
-            pendingUpdate.route = ALL_ROUTES.find(r => r.num === selNum && r.name === selName);
+            const selectedRoute = ALL_ROUTES.find(r => isRouteMatch(r, selNum, selName));
+            if (!selectedRoute) return alert("Selected route could not be resolved. Please select again.");
+            pendingUpdate.route = selectedRoute;
             goToMapSelection(false);
             document.getElementById('btn-next-1').onclick = originalNext1; 
         };
@@ -1585,9 +1636,12 @@ if (mapContainer) {
 function getGroupedRoutes(buses) {
     const routeMap = {};
     buses.forEach(bus => {
-        const routesList = (bus.routes && Array.isArray(bus.routes) && bus.routes.length > 0) ? bus.routes : [{ num: bus.routeNum, name: bus.name }];
-        routesList.forEach(r => {
-            if (!r || !r.num) return;
+        const routesList = (bus.routes && Array.isArray(bus.routes) && bus.routes.length > 0)
+            ? bus.routes
+            : [{ num: bus.routeNum, name: bus.name }];
+        routesList.forEach(routeData => {
+            const r = normalizeRouteDefinition(routeData);
+            if (!r) return;
             const key = `route_${r.num}_${r.name}`;
             if (!routeMap[key]) { routeMap[key] = { key, routeNum: r.num, name: r.name, buses: [], users: bus.users || 1 }; }
             bus.busNos.forEach(bNo => {
@@ -1782,7 +1836,7 @@ if (document.getElementById('btn-update-bus')) {
         if (s1) s1.classList.remove('hidden'); 
         if (s2) s2.classList.add('hidden');
         if (s3Confirm) s3Confirm.classList.add('hidden');
-        pendingUpdate = { route: null, busNo: null, spotId: null, isReplacement: false };
+        pendingUpdate = { route: null, busNo: null, spotId: null, sourceSpotId: null, isReplacement: false };
     };
 }
 if (document.getElementById('btn-close-modal')) document.getElementById('btn-close-modal').onclick = () => { if (modal) modal.classList.add('hidden'); };
@@ -1825,9 +1879,10 @@ function renderFetchBoardList() {
                 </div>
             `;
             card.onclick = () => { 
-                pendingUpdate.route = { num: item.routeNum, name: item.name };
+                pendingUpdate.route = normalizeRouteDefinition({ num: item.routeNum, name: item.name });
                 pendingUpdate.busNo = bObj.busNo; 
                 pendingUpdate.spotId = bObj.spotId;
+                pendingUpdate.sourceSpotId = bObj.spotId;
                 pendingUpdate.isReplacement = false;
                 goToMapSelection(false); 
                 const summaryEl = document.getElementById('step-3-summary');
@@ -1852,7 +1907,9 @@ if (document.getElementById('btn-next-1')) {
         } else {
             const [selNum, ...nameParts] = selectedVal.split('|');
             const selName = nameParts.join('|');
-            pendingUpdate.route = ALL_ROUTES.find(r => r.num === selNum && r.name === selName);
+            const selectedRoute = ALL_ROUTES.find(r => isRouteMatch(r, selNum, selName));
+            if (!selectedRoute) return alert("Selected route could not be resolved. Please select again.");
+            pendingUpdate.route = selectedRoute;
             
             if (s1) s1.classList.add('hidden');
             if (s2) s2.classList.remove('hidden');
@@ -1888,6 +1945,7 @@ function populateBusGrid(isUnassignedMode) {
 
             if (isSpottedUnassigned) pendingUpdate.spotId = isSpottedUnassigned.spotId;
             else if (isActive) pendingUpdate.spotId = isActive.spotId;
+            pendingUpdate.sourceSpotId = isActive ? isActive.spotId : null;
         };
         grid.appendChild(btn);
     });
@@ -1900,10 +1958,7 @@ if (document.getElementById('btn-next-2')) {
         if (!pendingUpdate.busNo) return alert("Please select a bus number.");
 
         if (pendingUpdate.route) {
-            const activeRouteSpots = activeBuses.filter(ab => {
-                if (ab.routes && Array.isArray(ab.routes)) return ab.routes.some(r => r.num === pendingUpdate.route.num && r.name === pendingUpdate.route.name);
-                return ab.routeNum === pendingUpdate.route.num && ab.name === pendingUpdate.route.name;
-            });
+            const activeRouteSpots = activeBuses.filter(ab => routeRecordMatches(ab, pendingUpdate.route));
             let isDifferentBus = false;
 
             if (activeRouteSpots.length > 0) {
@@ -2038,6 +2093,50 @@ if (document.getElementById('btn-submit-update')) {
 
             let routeOldBus = null, isNewRoute = true, oldSpotForSelectedBus = null;
             let oldBusToVirtualize = null;
+            const sourceReassignments = [];
+            const sourceEntries = Object.keys(activeData)
+                .filter(sId => (sId.startsWith('spot-') || sId.startsWith('virtual-')) && sId !== targetSpot)
+                .map(sId => ({ spotId: sId, spot: activeData[sId] }))
+                .filter(({ spot }) => {
+                    if (!spot) return false;
+                    const buses = spot.busNos || (spot.busNo ? [spot.busNo] : []);
+                    return buses.some(bus => String(bus).trim() === String(selectedBus).trim());
+                });
+
+            for (const { spotId, spot } of sourceEntries) {
+                if (routeRecordMatches(spot, targetRoute)) continue;
+
+                const sourceVoters = spot.votersLedger || {};
+                const ledgerVoteCount = Object.keys(sourceVoters).filter(voter => voter !== 'admin_locked').length;
+                const sourceUsers = Math.max(Number(spot.users) || 0, ledgerVoteCount, 1);
+                let reqVotes = 1;
+                if (sourceUsers >= 5) reqVotes = 4;
+                else if (sourceUsers >= 2) reqVotes = 2;
+                if (sourceUsers >= 999 || sourceVoters.admin_locked) reqVotes = 999;
+
+                if (reqVotes <= 1) continue;
+
+                const targetRouteKey = targetRoute
+                    ? `${String(targetRoute.num).trim().replace(/[^a-z0-9_-]/gi, '_')}_${normalizeRouteName(targetRoute.name).toLowerCase().replace(/[^a-z0-9_-]+/g, '_')}`
+                    : 'UNASSIGNED';
+                const reassignProposalKey = `reassign_${selectedBus}_to_route_${targetRouteKey}`;
+                const proposalPath = `activeBuses/${spotId}/proposals/${reassignProposalKey}`;
+                const proposalVotes = { ...(spot.proposals?.[reassignProposalKey] || {}) };
+                proposalVotes[currentDeviceToken] = true;
+                const currentVotes = Object.values(proposalVotes).filter(Boolean).length;
+
+                if (currentVotes < reqVotes) {
+                    const proposalUpdate = {};
+                    proposalUpdate[`${proposalPath}/${currentDeviceToken}`] = true;
+                    await update(ref(db), proposalUpdate);
+                    const sourceRouteName = spot.name || `Route ${spot.routeNum || 'unknown'}`;
+                    alert(`Bus ${selectedBus} is verified for ${sourceRouteName} by ${sourceUsers} students. Reassignment proposed. Additional student confirmation required before this bus can be moved.`);
+                    document.getElementById('btn-submit-update').disabled = false;
+                    return;
+                }
+
+                sourceReassignments.push({ spotId, proposalPath });
+            }
 
             if (activeData[targetSpot]) {
                 const existingSpot = activeData[targetSpot];
@@ -2080,9 +2179,7 @@ if (document.getElementById('btn-submit-update')) {
                 const bList = item.busNos || (item.busNo ? [item.busNo] : []);
                 if (bList.includes(selectedBus)) oldSpotForSelectedBus = sId;
                 
-                const hasRoute = (item.routes && Array.isArray(item.routes))
-                    ? item.routes.some(r => targetRoute && r.num === targetRoute.num && r.name === targetRoute.name)
-                    : (targetRoute && item.routeNum === targetRoute.num && item.name === targetRoute.name);
+                const hasRoute = routeRecordMatches(item, targetRoute);
 
                 if (hasRoute) { isNewRoute = false; routeOldBus = bList[0]; }
             });
@@ -2091,7 +2188,7 @@ if (document.getElementById('btn-submit-update')) {
                 let spotData = activeData[sId];
                 if (!spotData) return;
                 let bList = spotData.busNos || (spotData.busNo ? [spotData.busNo] : []);
-                let voters = spotData.votersLedger || {};
+                let voters = { ...(spotData.votersLedger || {}) };
                 let modified = false;
 
                 if (spotData.users >= 999 && Object.keys(voters).length === 0) voters = { 'admin_locked': true };
@@ -2102,9 +2199,7 @@ if (document.getElementById('btn-submit-update')) {
                     if (voters[currentDeviceToken]) delete voters[currentDeviceToken];
                 }
 
-                const matchesRoute = (spotData.routes && Array.isArray(spotData.routes))
-                    ? spotData.routes.some(r => targetRoute && r.num === targetRoute.num && r.name === targetRoute.name)
-                    : (targetRoute && spotData.routeNum === targetRoute.num && spotData.name === targetRoute.name);
+                const matchesRoute = routeRecordMatches(spotData, targetRoute);
 
                 if (targetRoute && pendingUpdate.isReplacement && matchesRoute) {
                     bList = [];
@@ -2114,12 +2209,21 @@ if (document.getElementById('btn-submit-update')) {
                 }
 
                 if (modified && sId !== targetSpot) {
-                    if (bList.length === 0 || Object.keys(voters).length === 0) updates[`activeBuses/${sId}`] = null;
+                    if (bList.length === 0) updates[`activeBuses/${sId}`] = null;
                     else {
+                        updates[`activeBuses/${sId}/busNo`] = bList[0];
                         updates[`activeBuses/${sId}/busNos`] = bList;
-                        updates[`activeBuses/${sId}/users`] = spotData.users >= 999 ? 999 : Object.keys(voters).length;
+                        updates[`activeBuses/${sId}/users`] = spotData.users >= 999 || voters.admin_locked
+                            ? 999
+                            : Object.keys(voters).length || Number(spotData.users) || 1;
                         updates[`activeBuses/${sId}/votersLedger`] = voters;
                     }
+                }
+            });
+
+            sourceReassignments.forEach(({ spotId, proposalPath }) => {
+                if (!Object.prototype.hasOwnProperty.call(updates, `activeBuses/${spotId}`)) {
+                    updates[proposalPath] = null;
                 }
             });
 
@@ -2133,8 +2237,12 @@ if (document.getElementById('btn-submit-update')) {
 
                 if (activeData[targetSpot] && !oldBusToVirtualize) {
                     const spotData = activeData[targetSpot];
-                    if (spotData.routes && Array.isArray(spotData.routes)) existingRoutes = [...spotData.routes];
-                    else if (spotData.routeNum && spotData.name) existingRoutes = [{ num: spotData.routeNum, name: spotData.name }];
+                    if (spotData.routes && Array.isArray(spotData.routes)) {
+                        existingRoutes = spotData.routes.map(normalizeRouteDefinition).filter(Boolean);
+                    } else if (spotData.routeNum && spotData.name) {
+                        const existingRoute = normalizeRouteDefinition({ num: spotData.routeNum, name: spotData.name });
+                        if (existingRoute) existingRoutes = [existingRoute];
+                    }
 
                     if (pendingUpdate.isReplacement) existingRoutes = [];
                     
@@ -2142,7 +2250,24 @@ if (document.getElementById('btn-submit-update')) {
                     if (spotData.users >= 999 && Object.keys(existingVoters).length === 0) existingVoters = { 'admin_locked': true };
                 }
 
-                if (!existingRoutes.some(r => r.num === targetRoute.num && r.name === targetRoute.name)) {
+                const sourceEntry = sourceEntries.find(({ spotId }) =>
+                    spotId === pendingUpdate.sourceSpotId || spotId === pendingUpdate.spotId
+                ) || sourceEntries.find(({ spot }) => routeRecordMatches(spot, targetRoute));
+                const sourceBuses = sourceEntry
+                    ? sourceEntry.spot.busNos || (sourceEntry.spot.busNo ? [sourceEntry.spot.busNo] : [])
+                    : [];
+                if (sourceEntry &&
+                    sourceBuses.some(bus => String(bus).trim() === String(selectedBus).trim()) &&
+                    routeRecordMatches(sourceEntry.spot, targetRoute)) {
+                    const sourceVoters = sourceEntry.spot.votersLedger || {};
+                    existingVoters = {
+                        ...sourceVoters,
+                        ...existingVoters,
+                        [currentDeviceToken]: true
+                    };
+                }
+
+                if (!existingRoutes.some(r => isRouteMatch(r, targetRoute.num, targetRoute.name))) {
                     existingRoutes.push({ num: targetRoute.num, name: targetRoute.name });
                 }
 
@@ -2251,9 +2376,14 @@ if (btnValNo) {
         let primaryRoute = null;
         if (targetBus.routes && targetBus.routes.length > 0) primaryRoute = targetBus.routes[0];
 
-        pendingUpdate.route = primaryRoute || ALL_ROUTES.find(r => r.num === targetBus.routeNum && r.name === targetBus.name) || ALL_ROUTES.find(r => r.num === targetBus.routeNum) || null;
+        pendingUpdate.route = (primaryRoute
+            ? ALL_ROUTES.find(r => isRouteMatch(r, primaryRoute.num, primaryRoute.name)) || normalizeRouteDefinition(primaryRoute)
+            : ALL_ROUTES.find(r => isRouteMatch(r, targetBus.routeNum, targetBus.name))
+                || ALL_ROUTES.find(r => isRouteMatch(r, targetBus.routeNum, r.name))
+        ) || null;
         pendingUpdate.busNo = (targetBus.busNos && targetBus.busNos[0]) || targetBus.busNo || null;
         pendingUpdate.spotId = targetBus.spotId;
+        pendingUpdate.sourceSpotId = targetBus.spotId;
         pendingUpdate.isReplacement = false; 
 
         goToMapSelection(false);
@@ -2489,7 +2619,7 @@ window.finishTour = function() {
         if (fabIconSave) fabIconSave.classList.add('hidden');
         boardEditFab.disabled = false;
     }
-    pendingUpdate = { route: null, busNo: null, spotId: null, isReplacement: false };
+    pendingUpdate = { route: null, busNo: null, spotId: null, sourceSpotId: null, isReplacement: false };
     
     lastActiveDataSignature = null;
     lastUnassignedDataSignature = null;
