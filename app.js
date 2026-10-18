@@ -73,6 +73,10 @@ let listOrderKeys = [];
 let lastActiveDataSignature = null;
 let lastUnassignedDataSignature = null;
 let mapViewportInitialized = false;
+let routeNotificationCooldown = {};
+
+const PIN_ICON_OUTLINE = '<svg class="pin-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path></svg>';
+const PIN_ICON_FILLED = '<svg class="pin-icon pinned" width="16" height="16" viewBox="0 0 24 24" fill="#FCB041" stroke="#FCB041" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path></svg>';
 
 window.ignoreMapTap = false; 
 
@@ -296,6 +300,73 @@ function getDeviceToken() {
 }
 const currentDeviceToken = getDeviceToken();
 
+function normalizePinnedRouteNum(routeNum) {
+    const value = String(routeNum ?? '').trim();
+    return value ? value.padStart(2, '0') : '';
+}
+
+function getPinnedRoutes() {
+    try {
+        const stored = JSON.parse(safeStorage.getItem('smb_pinned_routes') || '[]');
+        return Array.isArray(stored)
+            ? [...new Set(stored.map(normalizePinnedRouteNum).filter(Boolean))]
+            : [];
+    } catch (err) {
+        console.warn('Unable to parse pinned routes:', err);
+        return [];
+    }
+}
+
+function isRoutePinned(routeNum) {
+    return getPinnedRoutes().includes(normalizePinnedRouteNum(routeNum));
+}
+
+async function syncPinnedRoutesToCloud(pinnedArray) {
+    if (!currentDeviceToken) return;
+    try {
+        const tokenRef = ref(db, `fcmTokens/${currentDeviceToken}`);
+        const snap = await get(tokenRef);
+        const stored = snap.val();
+        const existingToken = typeof stored === 'string' ? stored : stored?.token;
+        await update(tokenRef, {
+            ...(existingToken ? { token: existingToken } : {}),
+            pinnedRoutes: pinnedArray
+        });
+    } catch (err) {
+        console.error('Pinned route cloud sync failed:', err);
+    }
+}
+
+function toggleRoutePin(routeNum) {
+    const cleanNum = normalizePinnedRouteNum(routeNum);
+    const pinned = getPinnedRoutes();
+    const nextPinned = pinned.includes(cleanNum)
+        ? pinned.filter(num => num !== cleanNum)
+        : [...pinned, cleanNum];
+    safeStorage.setItem('smb_pinned_routes', JSON.stringify(nextPinned));
+    void syncPinnedRoutesToCloud(nextPinned);
+    renderDigitalBoard();
+    renderList(getFilteredBuses());
+}
+
+function createRoutePinButton(routeNum) {
+    const pinned = isRoutePinned(routeNum);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn-pin-route';
+    button.title = pinned ? 'Unpin route' : 'Pin route to top and notifications';
+    button.setAttribute('aria-label', button.title);
+    button.setAttribute('aria-pressed', String(pinned));
+    button.style.cssText = 'border:0;background:transparent;cursor:pointer;padding:5px;display:inline-flex;align-items:center;justify-content:center;flex:none;';
+    button.innerHTML = pinned ? PIN_ICON_FILLED : PIN_ICON_OUTLINE;
+    button.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleRoutePin(routeNum);
+    });
+    return button;
+}
+
 const connectedRef = ref(db, ".info/connected");
 onValue(connectedRef, (snap) => {
     if (snap.val() === true) console.log("SeenMyBus Realtime Connected");
@@ -362,7 +433,14 @@ async function registerFCMToken() {
             serviceWorkerRegistration: registration
         });
         if (fcmToken) {
-            await set(ref(db, `fcmTokens/${currentDeviceToken}`), fcmToken);
+            const tokenRef = ref(db, `fcmTokens/${currentDeviceToken}`);
+            const tokenSnap = await get(tokenRef);
+            const stored = tokenSnap.val();
+            await update(tokenRef, {
+                ...(typeof stored === 'object' && stored !== null ? stored : {}),
+                token: fcmToken,
+                pinnedRoutes: getPinnedRoutes()
+            });
             console.log("FCM Token registered securely.");
         }
     } catch (err) {
@@ -371,30 +449,71 @@ async function registerFCMToken() {
 }
 
 // Global Broadcaster (Used by Map & Digital Board)
-function triggerPushBroadcast(routeName, oldBuses, newBuses, senderToken) {
+function triggerPushBroadcast(routeName, oldBuses, newBuses, senderToken, routeNum, usersCount = 1) {
     const oldB = oldBuses.filter(b => !newBuses.includes(b)).join(', ');
     const newB = newBuses.filter(b => !oldBuses.includes(b)).join(', ');
     
     if (!newB) return; 
 
-    const title = `Bus Changed for ${routeName}`;
-    const message = oldB ? `Bus for ${routeName} changed from ${oldB} to Bus ${newB}.` : `Bus ${newB} added to ${routeName}.`;
+    const cleanRouteNum = normalizePinnedRouteNum(routeNum);
+    const routeKey = cleanRouteNum || String(routeNum ?? routeName);
+    const isVerified = Number(usersCount) >= 2;
+    let cooldowns = routeNotificationCooldown;
+    try {
+        const storedCooldowns = JSON.parse(safeStorage.getItem('smb_route_notification_cooldowns') || '{}');
+        if (storedCooldowns && typeof storedCooldowns === 'object' && !Array.isArray(storedCooldowns)) {
+            routeNotificationCooldown = storedCooldowns;
+            cooldowns = routeNotificationCooldown;
+        }
+    } catch (err) {
+        console.warn('Unable to parse route notification cooldowns:', err);
+    }
+    const previous = cooldowns[routeKey];
+    if (previous && Date.now() - previous.timestamp < 10 * 60 * 1000 &&
+        !(isVerified && !previous.verified)) {
+        console.info(`Push suppressed by route cooldown for Route ${routeNum}`);
+        return;
+    }
+
+    const title = isVerified
+        ? (oldB ? `Bus Changed: Route ${routeNum}` : `Bus Confirmed: Route ${routeNum}`)
+        : `Spotted: Route ${routeNum} (${routeName})`;
+    const message = isVerified
+        ? (oldB
+            ? `Bus for ${routeName} confirmed as Bus ${newB} (replacing ${oldB}).`
+            : `Bus ${newB} verified for ${routeName} by AJU students.`)
+        : `Bus ${newB} reported by 1 student. Tap to verify if you are nearby.`;
+    const tag = `seenmybus-route-${routeNum}`;
+    cooldowns[routeKey] = { timestamp: Date.now(), verified: isVerified };
+    routeNotificationCooldown = cooldowns;
+    safeStorage.setItem('smb_route_notification_cooldowns', JSON.stringify(cooldowns));
     const notifId = Date.now().toString() + "_" + Math.random().toString(36).substr(2, 4);
     
     update(ref(db, `broadcastNotifications/${notifId}`), {
-        title, message, routeName, createdAt: Date.now(), senderToken
-    }).catch(()=>{});
+        title, message, routeName, routeNum: String(routeNum), usersCount: Number(usersCount) || 1, tag,
+        createdAt: Date.now(), senderToken
+    }).catch(err => console.error("Notification record write failed:", err));
 
     fetch('https://seenmybus-notifier.rahmansaif822.workers.dev/broadcast', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, message, routeName, sender: senderToken })
+        body: JSON.stringify({
+            title, message, routeName, routeNum: String(routeNum),
+            usersCount: Number(usersCount) || 1, tag, sender: senderToken
+        })
     }).then(res => console.log("Push trigger dispatched, Status:", res.status)).catch(e => console.error("Push network failure:", e));
 }
 
 onMessage(messaging, async (payload) => {
     console.log(">>> FCM FOREGROUND PACKET ARRIVED:", payload);
+    const userPinned = getPinnedRoutes();
+    const incomingRouteNum = payload.data?.routeNum || payload.notification?.routeNum;
+    if (userPinned.length > 0 &&
+        (!incomingRouteNum || !userPinned.includes(normalizePinnedRouteNum(incomingRouteNum)))) {
+        return;
+    }
     const title = payload.notification?.title || payload.data?.title || 'SeenMyBus Alert';
     const body = payload.notification?.body || payload.data?.message || payload.data?.body || '';
+    const routeNum = incomingRouteNum ? normalizePinnedRouteNum(incomingRouteNum) : '';
     
     try {
         const registration = await navigator.serviceWorker.ready;
@@ -403,6 +522,7 @@ onMessage(messaging, async (payload) => {
             icon: './badge-icon.png',
             badge: './badge-icon.png',
             vibrate: [100, 50, 100],
+            tag: payload.data?.tag || (routeNum ? `seenmybus-route-${routeNum}` : 'seenmybus-update'),
             data: { url: window.location.origin + '/' }
         });
     } catch (err) {
@@ -696,7 +816,7 @@ if (boardEditFab) {
                 // Advanced Comma Parsing: Filters emojis, alphabets, strips spaces, pads numbers, removes empties
                 const oldBusNoRaw = editData.oldVal.trim();
                 const newBusNoRaw = editData.newVal.trim();
-                const oldBusNos = oldBusNoRaw.split(',').map(b => b.replace(/\D/g, '').trim()).filter(Boolean);
+                const oldBusNos = oldBusNoRaw.split(',').map(b => b.replace(/\D/g, '').trim()).filter(Boolean).map(b => b.padStart(2, '0'));
                 const newBusNos = newBusNoRaw.split(',').map(b => b.replace(/\D/g, '').trim()).filter(Boolean).map(b => b.padStart(2, '0'));
 
                 if (newBusNos.join(',') === oldBusNos.join(',')) continue; 
@@ -714,6 +834,77 @@ if (boardEditFab) {
                     }
                 });
 
+                let theftConsensusMet = true;
+                const approvedReassignmentProposals = [];
+                for (const bNo of newBusNos) {
+                    const normalizedBusNo = String(bNo).replace(/\D/g, '').padStart(2, '0');
+                    const sourceSpots = Object.keys(activeData)
+                        .filter(spotId => spotId.startsWith('spot-') || spotId.startsWith('virtual-'))
+                        .filter(spotId => {
+                            const spot = activeData[spotId];
+                            if (!spot || routeRecordMatches(spot, route)) return false;
+                            const buses = spot.busNos || (spot.busNo ? [spot.busNo] : []);
+                            return buses.some(bus => String(bus).replace(/\D/g, '').padStart(2, '0') === normalizedBusNo);
+                        });
+
+                    for (const sourceSpotId of sourceSpots) {
+                        const sourceSpot = activeData[sourceSpotId];
+                        const sourceVoters = sourceSpot.votersLedger || {};
+                        if ((Number(sourceSpot.users) || 0) < 2 && !sourceVoters.admin_locked) continue;
+
+                        const cleanName = normalizeRouteName(route.name).toLowerCase()
+                            .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+                        const cleanRouteNum = String(route.num).replace(/[^a-z0-9_-]/gi, '_');
+                        const proposalKey = `reassign_${bNo}_to_${cleanRouteNum}_${cleanName}`;
+                        const proposalPath = `activeBuses/${sourceSpotId}/proposals/${proposalKey}`;
+                        const existingProposal = sourceSpot.proposals?.[proposalKey] || {};
+                        const sourceBusList = sourceSpot.busNos || (sourceSpot.busNo ? [sourceSpot.busNo] : []);
+                        const ledgerVoteCount = Object.keys(sourceVoters).filter(voter => voter !== 'admin_locked').length;
+                        const sourceVoteCount = sourceVoters.admin_locked
+                            ? 999
+                            : Math.max(Number(sourceSpot.users) || 0, ledgerVoteCount, 1);
+                        const remainingBuses = sourceBusList.filter(bus =>
+                            String(bus).replace(/\D/g, '').padStart(2, '0') !== normalizedBusNo
+                        );
+                        const proposalSpot = {
+                            ...sourceSpot,
+                            users: sourceVoteCount,
+                            proposals: { [remainingBuses.slice().sort().join(',')]: { ...existingProposal } }
+                        };
+                        const consensus = checkConsensus(proposalSpot, remainingBuses, currentDeviceToken);
+
+                        if (!consensus.allowed) {
+                            const proposalUpdates = {};
+                            Object.keys(sourceSpot.proposals || {}).forEach(existingKey => {
+                                if (existingKey.startsWith(`reassign_${bNo}_to_`) &&
+                                    existingKey !== proposalKey &&
+                                    sourceSpot.proposals[existingKey]?.[currentDeviceToken]) {
+                                    proposalUpdates[`activeBuses/${sourceSpotId}/proposals/${existingKey}/${currentDeviceToken}`] = null;
+                                }
+                            });
+                            proposalUpdates[`${proposalPath}/${currentDeviceToken}`] = true;
+                            try {
+                                await update(ref(db), proposalUpdates);
+                            } catch (err) {
+                                console.error('Bus reassignment proposal write failed:', err);
+                                boardEditFab.disabled = false;
+                                alert('Could not save the reassignment proposal. Please try again.');
+                                theftConsensusMet = false;
+                                break;
+                            }
+                            const sourceName = sourceSpot.name || `Route ${sourceSpot.routeNum || 'unknown'}`;
+                            alert(`Bus ${bNo} is verified for ${sourceName} (${sourceSpot.users} votes). Reassignment proposed. Needs additional confirmation to move.`);
+                            theftConsensusMet = false;
+                            break;
+                        }
+
+                        approvedReassignmentProposals.push(proposalPath);
+                    }
+                    if (!theftConsensusMet) break;
+                }
+
+                if (!theftConsensusMet) continue;
+
                 // Tiered Consensus Guard for Digital Board Overwrites
                 let consensusMet = true;
                 let pendingAlerts = [];
@@ -728,26 +919,35 @@ if (boardEditFab) {
                         updates[`activeBuses/${oldSpotId}/proposals`] = null;
                     }
                 }
-
                 if (!consensusMet) {
                     alert(pendingAlerts[0]);
                     continue; // Skip processing this specific route edit since consensus isn't met
                 }
 
-                // Consensus Met: Apply changes and trigger push notification (Only if an old bus is replaced)
-                if (oldBusNos.length > 0 && newBusNos.length > 0) {
-                    triggerPushBroadcast(route.name, oldBusNos, newBusNos, currentDeviceToken);
-                }
+                approvedReassignmentProposals.forEach(proposalPath => {
+                    updates[proposalPath] = null;
+                });
 
                 existingVoters[currentDeviceToken] = true;
                 let usersCount = existingVoters['admin_locked'] ? 999 : Object.keys(existingVoters).length;
+                if (newBusNos.length > 0) {
+                    triggerPushBroadcast(route.name, oldBusNos, newBusNos, currentDeviceToken, route.num, usersCount);
+                }
 
                 newBusNos.forEach((bNo, idx) => {
                     let targetSpotId = null;
+                    const normalizedBusNo = String(bNo).replace(/\D/g, '').padStart(2, '0');
+                    const busOnOtherRoute = Object.keys(activeData).some(sourceSpotId => {
+                        if (!sourceSpotId.startsWith('spot-') && !sourceSpotId.startsWith('virtual-')) return false;
+                        const sourceSpot = activeData[sourceSpotId];
+                        if (!sourceSpot || routeRecordMatches(sourceSpot, route)) return false;
+                        const sourceBuses = sourceSpot.busNos || (sourceSpot.busNo ? [sourceSpot.busNo] : []);
+                        return sourceBuses.some(bus => String(bus).replace(/\D/g, '').padStart(2, '0') === normalizedBusNo);
+                    });
 
                     // CHECK 1: Is this bus sitting as "Unassigned"?
                     Object.keys(unassignedData).forEach(uSpotId => {
-                        if (unassignedData[uSpotId] && String(unassignedData[uSpotId].busNo).replace(/\D/g, '') === bNo) targetSpotId = uSpotId;
+                        if (unassignedData[uSpotId] && String(unassignedData[uSpotId].busNo).replace(/\D/g, '').padStart(2, '0') === normalizedBusNo) targetSpotId = uSpotId;
                     });
 
                     // CHECK 2: Is it already active somewhere else?
@@ -755,13 +955,15 @@ if (boardEditFab) {
                         Object.keys(activeData).forEach(aSpotId => {
                             const ab = activeData[aSpotId];
                             const bList = ab.busNos || (ab.busNo ? [ab.busNo] : []);
-                            if (bList.includes(bNo)) targetSpotId = aSpotId;
+                            if (bList.some(bus => String(bus).replace(/\D/g, '').padStart(2, '0') === bNo) &&
+                                routeRecordMatches(ab, route)) targetSpotId = aSpotId;
                         });
                     }
 
                     // CHECK 3: Completely new manual entry? Use existing physical spot or virtualize
                     if (!targetSpotId) {
-                        if (idx < existingSpotsForRoute.length) targetSpotId = existingSpotsForRoute[idx];
+                        if (busOnOtherRoute) targetSpotId = `virtual-${route.num}-${bNo}-${now}-${idx}`;
+                        else if (idx < existingSpotsForRoute.length) targetSpotId = existingSpotsForRoute[idx];
                         else targetSpotId = `virtual-${route.num}-${bNo}-${now}-${idx}`;
                     }
 
@@ -778,12 +980,38 @@ if (boardEditFab) {
                         updatedAt: now,
                         updatedBy: currentDeviceToken
                     };
+
+                    Object.keys(activeData).forEach(sourceSpotId => {
+                        if (!sourceSpotId.startsWith('spot-') && !sourceSpotId.startsWith('virtual-')) return;
+                        const sourceSpot = activeData[sourceSpotId];
+                        if (!sourceSpot || routeRecordMatches(sourceSpot, route)) return;
+                        const sourceBusList = sourceSpot.busNos || (sourceSpot.busNo ? [sourceSpot.busNo] : []);
+                        if (!sourceBusList.some(bus => String(bus).replace(/\D/g, '').padStart(2, '0') === bNo)) return;
+                        const remainingBuses = sourceBusList.filter(bus =>
+                            String(bus).replace(/\D/g, '').padStart(2, '0') !== bNo
+                        );
+                        if (remainingBuses.length === 0) {
+                            updates[`activeBuses/${sourceSpotId}`] = null;
+                        } else {
+                            const sourceLedger = sourceSpot.votersLedger || {};
+                            updates[`activeBuses/${sourceSpotId}/busNo`] = remainingBuses[0];
+                            updates[`activeBuses/${sourceSpotId}/busNos`] = remainingBuses;
+                            updates[`activeBuses/${sourceSpotId}/users`] = sourceLedger.admin_locked
+                                ? 999
+                                : Object.keys(sourceLedger).length || Number(sourceSpot.users) || 1;
+                        }
+                    });
                 });
 
                 const assignedSpots = newBusNos.map((bNo) => {
                     let foundSpot = null;
                     Object.keys(unassignedData).forEach(uSpotId => { if (unassignedData[uSpotId] && String(unassignedData[uSpotId].busNo).replace(/\D/g, '') === bNo) foundSpot = uSpotId; });
-                    if (!foundSpot) Object.keys(activeData).forEach(aSpotId => { const ab = activeData[aSpotId]; const bList = ab.busNos || (ab.busNo ? [ab.busNo] : []); if (bList.includes(bNo)) foundSpot = aSpotId; });
+                    if (!foundSpot) Object.keys(activeData).forEach(aSpotId => {
+                        const ab = activeData[aSpotId];
+                        const bList = ab.busNos || (ab.busNo ? [ab.busNo] : []);
+                        if (bList.some(bus => String(bus).replace(/\D/g, '').padStart(2, '0') === bNo) &&
+                            routeRecordMatches(ab, route)) foundSpot = aSpotId;
+                    });
                     return foundSpot;
                 }).filter(Boolean);
 
@@ -821,7 +1049,10 @@ function renderDigitalBoard() {
     if (!boardGridEl) return;
     boardGridEl.innerHTML = '';
 
-    ALL_ROUTES.forEach(route => {
+    const orderedRoutes = [...ALL_ROUTES].sort((a, b) =>
+        Number(isRoutePinned(b.num)) - Number(isRoutePinned(a.num))
+    );
+    orderedRoutes.forEach(route => {
         const assignedBuses = [];
         activeBuses.forEach(ab => {
             const isAssigned = routeRecordMatches(ab, route);
@@ -866,10 +1097,15 @@ function renderDigitalBoard() {
 
         card.innerHTML = `
             <div class="b-r-num">${String(route.num).padStart(2, '0')}</div>
-            <div class="b-r-loc">${locHtml}</div>
+            <div class="b-r-loc" style="padding-right:24px;">${locHtml}</div>
             ${busCellHtml}
             <div class="b-r-users">${displayUsers}</div>
         `;
+        const pinButton = createRoutePinButton(route.num);
+        pinButton.style.position = 'absolute';
+        pinButton.style.right = '0';
+        pinButton.style.top = '0';
+        card.querySelector('.b-r-loc').appendChild(pinButton);
 
         if (isBoardEditMode) {
             const inputEl = card.querySelector('input');
@@ -1667,7 +1903,9 @@ function buildStableListOrder(groupedRoutes) {
     });
     if (topRouteKey && availableKeys.has(topRouteKey)) listOrderKeys = [topRouteKey, ...listOrderKeys.filter(key => key !== topRouteKey)];
     const routeMap = new Map(groupedRoutes.map(item => [item.key, item]));
-    return listOrderKeys.map(key => routeMap.get(key)).filter(Boolean);
+    return listOrderKeys.map(key => routeMap.get(key)).filter(Boolean).sort((a, b) =>
+        Number(isRoutePinned(b.routeNum)) - Number(isRoutePinned(a.routeNum))
+    );
 }
 
 function applyListSelection(container) {
@@ -1746,6 +1984,7 @@ function renderList(buses) {
             <div class="bus-badge-group"></div>
         `;
         const badgeGroup = div.querySelector('.bus-badge-group');
+        badgeGroup.appendChild(createRoutePinButton(item.routeNum));
         item.buses.forEach(bObj => {
             const badge = document.createElement('div');
             badge.className = 'bus-circle-badge';
@@ -2274,7 +2513,8 @@ if (document.getElementById('btn-submit-update')) {
                 existingVoters[currentDeviceToken] = true;
 
                 if (pendingUpdate.isReplacement && !isNewRoute && routeOldBus && routeOldBus !== selectedBus) {
-                    triggerPushBroadcast(targetRoute.name, [routeOldBus], [selectedBus], currentDeviceToken);
+                    const usersCount = existingVoters.admin_locked ? 999 : Object.keys(existingVoters).length;
+                    triggerPushBroadcast(targetRoute.name, [routeOldBus], [selectedBus], currentDeviceToken, targetRoute.num, usersCount);
                 }
 
                 const combinedNums = existingRoutes.map(r => r.num).join(', ');
